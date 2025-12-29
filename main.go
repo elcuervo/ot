@@ -143,7 +143,7 @@ type DateFilter struct {
 
 // Query represents parsed query options
 type Query struct {
-	Name        string       // Section name (from ## header before the block)
+	Name        string // Section name (from ## header before the block)
 	NotDone     bool
 	GroupBy     string       // "folder", "filename", or ""
 	DateFilters []DateFilter // date-based filters
@@ -413,10 +413,10 @@ func saveTask(task *Task) error {
 
 // QuerySection represents a section with its query and results
 type QuerySection struct {
-	Name   string       // Section name (from ## header)
-	Query  *Query       // The query for this section
-	Groups []TaskGroup  // Grouped task results
-	Tasks  []*Task      // Flat task list for this section
+	Name   string      // Section name (from ## header)
+	Query  *Query      // The query for this section
+	Groups []TaskGroup // Grouped task results
+	Tasks  []*Task     // Flat task list for this section
 }
 
 // TUI Model

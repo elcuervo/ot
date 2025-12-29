@@ -142,20 +142,20 @@ func TestParseQueryFile(t *testing.T) {
 		wantErr     bool
 	}{
 		{
-			name: "not done filter",
-			content: "# Query\n\n```tasks\nnot done\n```\n",
+			name:        "not done filter",
+			content:     "# Query\n\n```tasks\nnot done\n```\n",
 			wantNotDone: true,
 			wantErr:     false,
 		},
 		{
-			name: "no filter",
-			content: "# Query\n\n```tasks\ndue today\n```\n",
+			name:        "no filter",
+			content:     "# Query\n\n```tasks\ndue today\n```\n",
 			wantNotDone: false,
 			wantErr:     false,
 		},
 		{
-			name: "multiple filters including not done",
-			content: "# Query\n\n```tasks\nnot done\ndue today\ngroup by folder\n```\n",
+			name:        "multiple filters including not done",
+			content:     "# Query\n\n```tasks\nnot done\ndue today\ngroup by folder\n```\n",
 			wantNotDone: true,
 			wantErr:     false,
 		},
@@ -414,12 +414,12 @@ func TestParseQueryFileDateFilters(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	tests := []struct {
-		name             string
-		content          string
-		wantFilterCount  int
-		wantFirstField   string
-		wantFirstOp      string
-		wantFirstDate    string
+		name            string
+		content         string
+		wantFilterCount int
+		wantFirstField  string
+		wantFirstOp     string
+		wantFirstDate   string
 	}{
 		{
 			name:            "due today",
@@ -517,10 +517,10 @@ func TestMatchDateFilter(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		task    *Task
-		filter  DateFilter
-		want    bool
+		name   string
+		task   *Task
+		filter DateFilter
+		want   bool
 	}{
 		{
 			name:   "task on target date",
