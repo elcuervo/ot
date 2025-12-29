@@ -469,6 +469,65 @@ func (m model) Init() tea.Cmd {
 	return nil
 }
 
+// refresh re-scans the vault and rebuilds sections from the stored queries
+func (m *model) refresh() {
+	// Re-parse query file to pick up any changes
+	queries, err := parseAllQueryBlocks(m.queryFile)
+	if err != nil {
+		m.err = err
+		return
+	}
+	m.queries = queries
+
+	// Re-scan vault
+	files, err := scanVault(m.vaultPath)
+	if err != nil {
+		m.err = err
+		return
+	}
+
+	// Re-parse all files for tasks
+	var allTasks []*Task
+	for _, file := range files {
+		tasks, err := parseFile(file)
+		if err != nil {
+			continue
+		}
+		allTasks = append(allTasks, tasks...)
+	}
+
+	// Rebuild sections
+	var sections []QuerySection
+	for _, query := range m.queries {
+		filtered := filterTasks(allTasks, query)
+		groups := groupTasks(filtered, query.GroupBy, m.vaultPath)
+
+		sections = append(sections, QuerySection{
+			Name:   query.Name,
+			Query:  query,
+			Groups: groups,
+			Tasks:  filtered,
+		})
+	}
+
+	// Rebuild flat task list
+	var tasks []*Task
+	for _, s := range sections {
+		tasks = append(tasks, s.Tasks...)
+	}
+
+	m.sections = sections
+	m.tasks = tasks
+
+	// Adjust cursor if needed
+	if m.cursor >= len(m.tasks) {
+		m.cursor = len(m.tasks) - 1
+	}
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -504,6 +563,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.tasks) > 0 {
 				m.cursor = len(m.tasks) - 1
 			}
+
+		case "r":
+			m.refresh()
 		}
 	}
 
@@ -633,7 +695,7 @@ func (m model) View() string {
 	}
 
 	// Help
-	help := helpStyle.Render("↑/k up • ↓/j down • space/enter toggle (saves immediately) • q quit")
+	help := helpStyle.Render("↑/k up • ↓/j down • space/enter toggle • r refresh • q quit")
 	b.WriteString("\n" + help)
 
 	return b.String()
@@ -768,7 +830,7 @@ func main() {
 	}
 
 	// Run TUI
-	p := tea.NewProgram(newModel(sections, *vaultPath), tea.WithAltScreen())
+	p := tea.NewProgram(newModel(sections, *vaultPath, queryFile, queries), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running TUI: %v\n", err)
 		os.Exit(1)
