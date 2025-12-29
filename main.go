@@ -425,11 +425,13 @@ type model struct {
 	tasks     []*Task // Flat list of all tasks for navigation
 	cursor    int
 	vaultPath string
+	queryFile string   // Path to query file for refresh
+	queries   []*Query // Parsed queries for refresh
 	quitting  bool
 	err       error
 }
 
-func newModel(sections []QuerySection, vaultPath string) model {
+func newModel(sections []QuerySection, vaultPath string, queryFile string, queries []*Query) model {
 	// Create flat task list for navigation across all sections
 	var tasks []*Task
 	for i := range sections {
@@ -458,6 +460,8 @@ func newModel(sections []QuerySection, vaultPath string) model {
 		sections:  sections,
 		tasks:     tasks,
 		vaultPath: vaultPath,
+		queryFile: queryFile,
+		queries:   queries,
 	}
 }
 
@@ -542,6 +546,9 @@ var sectionStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color("205")).
 	MarginTop(1)
 
+var countStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color("245"))
+
 func (m model) View() string {
 	if m.err != nil {
 		return fmt.Sprintf("Error: %v\n\nPress q to quit.", m.err)
@@ -563,9 +570,11 @@ func (m model) View() string {
 	} else {
 		taskIndex := 0
 		for _, section := range m.sections {
-			// Show section header if there's a name
+			// Show section header with task count
 			if section.Name != "" {
-				b.WriteString(sectionStyle.Render(fmt.Sprintf("## %s", section.Name)) + "\n")
+				count := len(section.Tasks)
+				countText := countStyle.Render(fmt.Sprintf(" (%d)", count))
+				b.WriteString(sectionStyle.Render(fmt.Sprintf("## %s", section.Name)) + countText + "\n")
 			}
 
 			if len(section.Tasks) == 0 {
@@ -730,7 +739,7 @@ func main() {
 		fmt.Printf("Found %d task(s):\n\n", totalTasks)
 		for _, section := range sections {
 			if section.Name != "" {
-				fmt.Printf("## %s\n", section.Name)
+				fmt.Printf("## %s (%d)\n", section.Name, len(section.Tasks))
 			}
 			if len(section.Tasks) == 0 {
 				fmt.Println("(no matching tasks)")

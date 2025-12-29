@@ -1,3 +1,3 @@
-## ot
+# ot
 
 Obsidian Tasks
