@@ -15,6 +15,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const (
+	defaultWindowHeight = 24
+	defaultWindowWidth  = 80
+	reservedUILines     = 4 // title(1) + newline(1) + help margin(1) + help(1)
+	minVisibleHeight    = 3
+)
+
 var (
 	checkboxRe      = regexp.MustCompile(`^(\s*-\s*)\[([ xX])\](.*)$`)
 	doneRe          = regexp.MustCompile(`\s*✅\s*\d{4}-\d{2}-\d{2}`)
@@ -262,11 +269,115 @@ func parseQueryContent(queryContent string) *Query {
 	return query
 }
 
+// startOfDay returns the time truncated to midnight UTC
+func startOfDay(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// relPath returns the relative path from basePath, or the original if that fails
+func relPath(basePath, filePath string) string {
+	if rel, err := filepath.Rel(basePath, filePath); err == nil {
+		return rel
+	}
+	return filePath
+}
+
+// calculateVisibleRange returns start/end indices for visible lines,
+// keeping cursorLineIdx visible and roughly centered.
+func calculateVisibleRange(cursorLineIdx int, lineHeights []int, visibleHeight int) (startLine, endLine int) {
+	totalLines := len(lineHeights)
+	if totalLines == 0 {
+		return 0, 0
+	}
+
+	// Calculate total height and cursor position in rendered lines
+	totalHeight := 0
+	cursorPos := 0
+	for i, h := range lineHeights {
+		if i < cursorLineIdx {
+			cursorPos += h
+		}
+		totalHeight += h
+	}
+
+	// If everything fits, show all
+	if totalHeight <= visibleHeight {
+		return 0, totalLines
+	}
+
+	// Target: center cursor in visible area
+	targetStart := cursorPos - visibleHeight/2
+	if targetStart < 0 {
+		targetStart = 0
+	}
+
+	// Find startLine from target position
+	pos := 0
+	for i, h := range lineHeights {
+		if pos >= targetStart {
+			startLine = i
+			break
+		}
+		pos += h
+	}
+
+	// Find endLine that fits in visibleHeight
+	rendered := 0
+	for i := startLine; i < totalLines; i++ {
+		if rendered+lineHeights[i] > visibleHeight {
+			break
+		}
+		rendered += lineHeights[i]
+		endLine = i + 1
+	}
+
+	// Ensure cursor is visible (may need to scroll down)
+	if cursorLineIdx >= endLine {
+		endLine = cursorLineIdx + 1
+		// Recalculate startLine from end
+		rendered = 0
+		for i := endLine - 1; i >= 0; i-- {
+			if rendered+lineHeights[i] > visibleHeight {
+				startLine = i + 1
+				break
+			}
+			rendered += lineHeights[i]
+			startLine = i
+		}
+	}
+
+	// Don't leave empty space at bottom
+	rendered = 0
+	for i := startLine; i < totalLines; i++ {
+		rendered += lineHeights[i]
+	}
+	for startLine > 0 && rendered < visibleHeight {
+		startLine--
+		rendered += lineHeights[startLine]
+	}
+
+	// Final endLine calculation
+	rendered = 0
+	endLine = startLine
+	for i := startLine; i < totalLines; i++ {
+		if rendered+lineHeights[i] > visibleHeight {
+			break
+		}
+		rendered += lineHeights[i]
+		endLine = i + 1
+	}
+
+	// Safety: always include cursor
+	if cursorLineIdx >= endLine {
+		endLine = cursorLineIdx + 1
+	}
+
+	return startLine, endLine
+}
+
 // resolveDate converts relative date strings to actual dates (in UTC for comparison)
 func resolveDate(dateStr string) time.Time {
-	now := time.Now()
-	// Use UTC for consistent comparison with parsed dates
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	today := startOfDay(time.Now())
 
 	switch dateStr {
 	case "today":
@@ -302,8 +413,7 @@ func matchDateFilter(task *Task, filter DateFilter) bool {
 	}
 
 	targetDate := resolveDate(filter.Date)
-	// Normalize to UTC for comparison (task dates are already UTC from time.Parse)
-	taskDateOnly := time.Date(taskDate.Year(), taskDate.Month(), taskDate.Day(), 0, 0, 0, 0, time.UTC)
+	taskDateOnly := startOfDay(*taskDate)
 
 	switch filter.Operator {
 	case "on":
@@ -375,11 +485,11 @@ func groupTasks(tasks []*Task, groupBy string, vaultPath string) []TaskGroup {
 
 	for _, task := range tasks {
 		var key string
-		relPath, _ := filepath.Rel(vaultPath, task.FilePath)
+		rel := relPath(vaultPath, task.FilePath)
 
 		switch groupBy {
 		case "folder":
-			key = filepath.Dir(relPath)
+			key = filepath.Dir(rel)
 			if key == "." {
 				key = "/"
 			}
@@ -453,28 +563,12 @@ type model struct {
 }
 
 func newModel(sections []QuerySection, vaultPath string, queryFile string, queries []*Query) model {
-	// Create flat task list for navigation across all sections
+	// Build flat task list from all sections
 	var tasks []*Task
-	for i := range sections {
-		for _, g := range sections[i].Groups {
+	for _, s := range sections {
+		for _, g := range s.Groups {
 			tasks = append(tasks, g.Tasks...)
 		}
-		sections[i].Tasks = tasks[len(tasks)-len(sections[i].Tasks):] // Update section's flat list
-	}
-
-	// Rebuild sections' flat task lists
-	for i := range sections {
-		var sectionTasks []*Task
-		for _, g := range sections[i].Groups {
-			sectionTasks = append(sectionTasks, g.Tasks...)
-		}
-		sections[i].Tasks = sectionTasks
-	}
-
-	// Build global flat list
-	tasks = nil
-	for _, s := range sections {
-		tasks = append(tasks, s.Tasks...)
 	}
 
 	return model{
@@ -483,8 +577,8 @@ func newModel(sections []QuerySection, vaultPath string, queryFile string, queri
 		vaultPath:    vaultPath,
 		queryFile:    queryFile,
 		queries:      queries,
-		windowHeight: 24, // Default height, will be updated on WindowSizeMsg
-		windowWidth:  80, // Default width
+		windowHeight: defaultWindowHeight,
+		windowWidth:  defaultWindowWidth,
 	}
 }
 
@@ -709,11 +803,7 @@ func (m model) View() string {
 					// Get relative path for display (only show if not grouping by filename)
 					fileInfo := ""
 					if section.Query.GroupBy != "filename" {
-						relPath := task.FilePath
-						if rel, err := filepath.Rel(m.vaultPath, task.FilePath); err == nil {
-							relPath = rel
-						}
-						fileInfo = fileStyle.Render(fmt.Sprintf(" (%s:%d)", relPath, task.LineNumber))
+						fileInfo = fileStyle.Render(fmt.Sprintf(" (%s:%d)", relPath(m.vaultPath, task.FilePath), task.LineNumber))
 					} else {
 						fileInfo = fileStyle.Render(fmt.Sprintf(" (:%d)", task.LineNumber))
 					}
@@ -740,116 +830,32 @@ func (m model) View() string {
 			}
 		}
 
-		// Calculate visible window
-		// Reserved lines breakdown:
-		// - Title: 1 line + newline = 2 lines
-		// - Help: MarginTop(1) + 1 line = 2 lines
-		reservedLines := 4
-		visibleHeight := m.windowHeight - reservedLines
-		if visibleHeight < 3 {
-			visibleHeight = 3
+		// Calculate visible window height
+		visibleHeight := m.windowHeight - reservedUILines
+		if visibleHeight < minVisibleHeight {
+			visibleHeight = minVisibleHeight
 		}
 
-		// Build a mapping from viewLine index to actual rendered line count
-		// (accounting for lipgloss margins which add newlines)
+		// Build line heights (accounting for lipgloss margins which add newlines)
 		lineHeights := make([]int, len(lines))
 		totalRenderedLines := 0
-
 		for i, line := range lines {
-			// Count newlines in the content (margins render as \n)
 			height := 1 + strings.Count(line.content, "\n")
 			lineHeights[i] = height
 			totalRenderedLines += height
 		}
 
-		// Find which viewLine contains the cursor and its rendered position
+		// Find which line contains the cursor
 		cursorLineIdx := 0
-		cursorRenderedPos := 0
-		renderedPos := 0
 		for i, line := range lines {
 			if line.taskIndex == m.cursor {
 				cursorLineIdx = i
-				cursorRenderedPos = renderedPos
 				break
 			}
-			renderedPos += lineHeights[i]
 		}
 
-		// Calculate scroll offset to keep cursor visible
-		startLine := 0
-		endLine := len(lines)
-
-		if totalRenderedLines > visibleHeight {
-			// Find startLine such that cursor is visible and roughly centered
-			targetStart := cursorRenderedPos - visibleHeight/2
-
-			// Find which viewLine index corresponds to this rendered position
-			renderedPos = 0
-			for i := range lines {
-				if renderedPos >= targetStart {
-					startLine = i
-					break
-				}
-				renderedPos += lineHeights[i]
-			}
-
-			// Clamp startLine to valid range
-			if startLine < 0 {
-				startLine = 0
-			}
-
-			// Find endLine that fits within visibleHeight
-			renderedCount := 0
-			for i := startLine; i < len(lines); i++ {
-				if renderedCount+lineHeights[i] > visibleHeight {
-					endLine = i
-					break
-				}
-				renderedCount += lineHeights[i]
-				endLine = i + 1
-			}
-
-			// Ensure cursor line is included in visible range
-			// If cursor is past endLine, adjust startLine to include it
-			if cursorLineIdx >= endLine {
-				// Start from cursor and work backwards to fill visible area
-				endLine = cursorLineIdx + 1
-				renderedCount = lineHeights[cursorLineIdx]
-				startLine = cursorLineIdx
-				for i := cursorLineIdx - 1; i >= 0 && renderedCount+lineHeights[i] <= visibleHeight; i-- {
-					renderedCount += lineHeights[i]
-					startLine = i
-				}
-			}
-
-			// Make sure we don't start too late (leaving empty space at bottom)
-			for startLine > 0 {
-				renderedCount := 0
-				for i := startLine; i < len(lines); i++ {
-					renderedCount += lineHeights[i]
-				}
-				if renderedCount >= visibleHeight {
-					break
-				}
-				startLine--
-			}
-
-			// Recalculate endLine after potential startLine adjustment
-			renderedCount = 0
-			for i := startLine; i < len(lines); i++ {
-				if renderedCount+lineHeights[i] > visibleHeight {
-					endLine = i
-					break
-				}
-				renderedCount += lineHeights[i]
-				endLine = i + 1
-			}
-
-			// Final check: ensure cursor is visible
-			if cursorLineIdx >= endLine {
-				endLine = cursorLineIdx + 1
-			}
-		}
+		// Calculate visible range
+		startLine, endLine := calculateVisibleRange(cursorLineIdx, lineHeights, visibleHeight)
 
 		// Render visible lines
 		for i := startLine; i < endLine; i++ {
@@ -999,15 +1005,11 @@ func main() {
 					fmt.Printf("### %s\n", group.Name)
 				}
 				for _, task := range group.Tasks {
-					relPath := task.FilePath
-					if rel, err := filepath.Rel(*vaultPath, task.FilePath); err == nil {
-						relPath = rel
-					}
 					checkbox := "[ ]"
 					if task.Done {
 						checkbox = "[x]"
 					}
-					fmt.Printf("%s %s (%s:%d)\n", checkbox, task.Description, relPath, task.LineNumber)
+					fmt.Printf("%s %s (%s:%d)\n", checkbox, task.Description, relPath(*vaultPath, task.FilePath), task.LineNumber)
 				}
 			}
 			fmt.Println()
