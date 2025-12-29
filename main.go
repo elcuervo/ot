@@ -288,14 +288,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			m.quitting = true
-			// Save all modified tasks
-			for _, task := range m.tasks {
-				if task.Modified {
-					if err := saveTask(task); err != nil {
-						m.err = err
-					}
-				}
-			}
 			return m, tea.Quit
 
 		case "up", "k":
@@ -310,7 +302,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "enter", " ", "x":
 			if len(m.tasks) > 0 {
-				m.tasks[m.cursor].Toggle()
+				task := m.tasks[m.cursor]
+				task.Toggle()
+				// Save immediately
+				if err := saveTask(task); err != nil {
+					m.err = err
+				}
 			}
 
 		case "g":
@@ -363,15 +360,6 @@ func (m model) View() string {
 	}
 
 	if m.quitting {
-		modified := 0
-		for _, t := range m.tasks {
-			if t.Modified {
-				modified++
-			}
-		}
-		if modified > 0 {
-			return fmt.Sprintf("Saved %d modified task(s). Goodbye!\n", modified)
-		}
 		return "Goodbye!\n"
 	}
 
@@ -429,20 +417,14 @@ func (m model) View() string {
 					line = selectedStyle.Render(line)
 				}
 
-				// Mark modified tasks
-				modified := ""
-				if task.Modified {
-					modified = " *"
-				}
-
-				b.WriteString(fmt.Sprintf("%s%s%s%s\n", cursor, line, fileInfo, modified))
+				b.WriteString(fmt.Sprintf("%s%s%s\n", cursor, line, fileInfo))
 				taskIndex++
 			}
 		}
 	}
 
 	// Help
-	help := helpStyle.Render("↑/k up • ↓/j down • space/enter toggle • q quit (auto-saves)")
+	help := helpStyle.Render("↑/k up • ↓/j down • space/enter toggle (saves immediately) • q quit")
 	b.WriteString("\n" + help)
 
 	return b.String()
