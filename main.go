@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"flag"
 	"fmt"
 	"os"
@@ -12,6 +13,18 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+)
+
+var (
+	checkboxRe      = regexp.MustCompile(`^(\s*-\s*)\[([ xX])\](.*)$`)
+	doneRe          = regexp.MustCompile(`\s*✅\s*\d{4}-\d{2}-\d{2}`)
+	taskRe          = regexp.MustCompile(`^\s*-\s*\[([ xX])\]\s*(.*)$`)
+	dueDateRe       = regexp.MustCompile(`📅\s*(\d{4}-\d{2}-\d{2})`)
+	blockRe         = regexp.MustCompile("(?s)```tasks\\s*\\n(.+?)```")
+	headerRe        = regexp.MustCompile(`(?m)^##\s+(.+)$`)
+	groupByFuncRe   = regexp.MustCompile(`group by function task\.file\.(\w+)`)
+	groupBySimpleRe = regexp.MustCompile(`group by (\w+)`)
+	dateFilterRe    = regexp.MustCompile(`(due|scheduled|done)\s+(today|tomorrow|before\s+\S+|after\s+\S+|on\s+\S+)`)
 )
 
 // Task represents a single task from a markdown file
@@ -34,8 +47,6 @@ func (t *Task) Toggle() {
 
 // updateRawLine rebuilds the raw line based on current state
 func (t *Task) updateRawLine() {
-	// Find the checkbox pattern and replace it
-	checkboxRe := regexp.MustCompile(`^(\s*-\s*)\[([ xX])\](.*)$`)
 	matches := checkboxRe.FindStringSubmatch(t.RawLine)
 	if matches == nil {
 		return
@@ -45,11 +56,9 @@ func (t *Task) updateRawLine() {
 	content := matches[3] // Everything after checkbox
 
 	// Remove existing done date if present
-	doneRe := regexp.MustCompile(`\s*✅\s*\d{4}-\d{2}-\d{2}`)
 	content = doneRe.ReplaceAllString(content, "")
 
 	if t.Done {
-		// Add done date
 		doneDate := time.Now().Format("2006-01-02")
 		t.RawLine = fmt.Sprintf("%s[x]%s ✅ %s", prefix, content, doneDate)
 	} else {
@@ -84,7 +93,6 @@ func scanVault(vaultPath string) ([]string, error) {
 
 // parseDueDate extracts due date from task description (📅 YYYY-MM-DD)
 func parseDueDate(description string) *time.Time {
-	dueDateRe := regexp.MustCompile(`📅\s*(\d{4}-\d{2}-\d{2})`)
 	matches := dueDateRe.FindStringSubmatch(description)
 	if matches == nil {
 		return nil
@@ -107,9 +115,6 @@ func parseFile(filePath string) ([]*Task, error) {
 	var tasks []*Task
 	scanner := bufio.NewScanner(file)
 	lineNum := 0
-
-	// Match task lines: - [ ] or - [x] or - [X]
-	taskRe := regexp.MustCompile(`^\s*-\s*\[([ xX])\]\s*(.*)$`)
 
 	for scanner.Scan() {
 		lineNum++
@@ -180,15 +185,11 @@ func parseAllQueryBlocks(filePath string) ([]*Query, error) {
 		return nil, err
 	}
 
-	// Find all ```tasks blocks with their positions
-	blockRe := regexp.MustCompile("(?s)```tasks\\s*\\n(.+?)```")
 	matches := blockRe.FindAllStringSubmatchIndex(string(content), -1)
 	if matches == nil {
 		return nil, fmt.Errorf("no ```tasks block found in %s", filePath)
 	}
 
-	// Find all ## headers with their positions
-	headerRe := regexp.MustCompile(`(?m)^##\s+(.+)$`)
 	headers := headerRe.FindAllStringSubmatchIndex(string(content), -1)
 
 	var queries []*Query
@@ -220,15 +221,6 @@ func parseAllQueryBlocks(filePath string) ([]*Query, error) {
 func parseQueryContent(queryContent string) *Query {
 	query := &Query{}
 
-	groupByFuncRe := regexp.MustCompile(`group by function task\.file\.(\w+)`)
-	groupBySimpleRe := regexp.MustCompile(`group by (\w+)`)
-
-	// Date filter patterns - matches: "due today", "due before tomorrow", "due after 2024-01-01"
-	// Supports: due, scheduled, done
-	// Operators: today (shorthand), before, after, on
-	dateFilterRe := regexp.MustCompile(`(due|scheduled|done)\s+(today|tomorrow|before\s+\S+|after\s+\S+|on\s+\S+)`)
-
-	// Parse filters
 	if strings.Contains(queryContent, "not done") {
 		query.NotDone = true
 	}
@@ -259,12 +251,9 @@ func parseQueryContent(queryContent string) *Query {
 	}
 
 	// Parse group by - supports both simple and function syntax
-	// Simple: "group by folder", "group by filename"
-	// Function: "group by function task.file.folder"
 	if funcMatch := groupByFuncRe.FindStringSubmatch(queryContent); funcMatch != nil {
 		query.GroupBy = funcMatch[1]
 	} else if simpleMatch := groupBySimpleRe.FindStringSubmatch(queryContent); simpleMatch != nil {
-		// Skip "function" as a group by value
 		if simpleMatch[1] != "function" {
 			query.GroupBy = simpleMatch[1]
 		}
@@ -338,6 +327,38 @@ func matchAllDateFilters(task *Task, filters []DateFilter) bool {
 	return true
 }
 
+// OrderedMap maintains insertion order for keys with comparable constraint
+type OrderedMap[K cmp.Ordered, V any] struct {
+	data  map[K]V
+	order []K
+}
+
+// NewOrderedMap creates a new OrderedMap
+func NewOrderedMap[K cmp.Ordered, V any]() *OrderedMap[K, V] {
+	return &OrderedMap[K, V]{
+		data: make(map[K]V),
+	}
+}
+
+// Set adds or updates a key-value pair, tracking insertion order
+func (m *OrderedMap[K, V]) Set(key K, value V) {
+	if _, exists := m.data[key]; !exists {
+		m.order = append(m.order, key)
+	}
+	m.data[key] = value
+}
+
+// Get retrieves a value by key
+func (m *OrderedMap[K, V]) Get(key K) (V, bool) {
+	v, ok := m.data[key]
+	return v, ok
+}
+
+// Keys returns keys in insertion order
+func (m *OrderedMap[K, V]) Keys() []K {
+	return m.order
+}
+
 // TaskGroup represents a group of tasks
 type TaskGroup struct {
 	Name  string
@@ -350,8 +371,7 @@ func groupTasks(tasks []*Task, groupBy string, vaultPath string) []TaskGroup {
 		return []TaskGroup{{Name: "", Tasks: tasks}}
 	}
 
-	groups := make(map[string][]*Task)
-	var order []string
+	groups := NewOrderedMap[string, []*Task]()
 
 	for _, task := range tasks {
 		var key string
@@ -369,17 +389,16 @@ func groupTasks(tasks []*Task, groupBy string, vaultPath string) []TaskGroup {
 			key = ""
 		}
 
-		if _, exists := groups[key]; !exists {
-			order = append(order, key)
-		}
-		groups[key] = append(groups[key], task)
+		existing, _ := groups.Get(key)
+		groups.Set(key, append(existing, task))
 	}
 
-	result := make([]TaskGroup, 0, len(order))
-	for _, name := range order {
+	result := make([]TaskGroup, 0, len(groups.Keys()))
+	for _, name := range groups.Keys() {
+		tasks, _ := groups.Get(name)
 		result = append(result, TaskGroup{
 			Name:  name,
-			Tasks: groups[name],
+			Tasks: tasks,
 		})
 	}
 
@@ -701,21 +720,28 @@ func (m model) View() string {
 	return b.String()
 }
 
+// Filter returns elements from slice that satisfy the predicate
+func Filter[T any](slice []T, predicate func(T) bool) []T {
+	var result []T
+	for _, v := range slice {
+		if predicate(v) {
+			result = append(result, v)
+		}
+	}
+	return result
+}
+
 // filterTasks applies a query's filters to a task list
 func filterTasks(allTasks []*Task, query *Query) []*Task {
-	var filtered []*Task
-	for _, task := range allTasks {
-		// Skip done tasks if "not done" filter is active
+	return Filter(allTasks, func(task *Task) bool {
 		if query.NotDone && task.Done {
-			continue
+			return false
 		}
-		// Apply date filters
 		if len(query.DateFilters) > 0 && !matchAllDateFilters(task, query.DateFilters) {
-			continue
+			return false
 		}
-		filtered = append(filtered, task)
-	}
-	return filtered
+		return true
+	})
 }
 
 func main() {
