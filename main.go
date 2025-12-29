@@ -603,8 +603,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("170")).
-			MarginBottom(1)
+			Foreground(lipgloss.Color("170"))
 
 	selectedStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("212")).
@@ -743,11 +742,9 @@ func (m model) View() string {
 
 		// Calculate visible window
 		// Reserved lines breakdown:
-		// - Title: 1 line + MarginBottom(1) = 2 lines
+		// - Title: 1 line + newline = 2 lines
 		// - Help: MarginTop(1) + 1 line = 2 lines
-		// - Scroll indicator: 1 line (when present)
-		// - Safety margin: 1 line
-		reservedLines := 6
+		reservedLines := 4
 		visibleHeight := m.windowHeight - reservedLines
 		if visibleHeight < 3 {
 			visibleHeight = 3
@@ -757,6 +754,7 @@ func (m model) View() string {
 		// (accounting for lipgloss margins which add newlines)
 		lineHeights := make([]int, len(lines))
 		totalRenderedLines := 0
+
 		for i, line := range lines {
 			// Count newlines in the content (margins render as \n)
 			height := 1 + strings.Count(line.content, "\n")
@@ -764,11 +762,13 @@ func (m model) View() string {
 			totalRenderedLines += height
 		}
 
-		// Find the cursor's rendered position (in terminal lines)
+		// Find which viewLine contains the cursor and its rendered position
+		cursorLineIdx := 0
 		cursorRenderedPos := 0
 		renderedPos := 0
 		for i, line := range lines {
 			if line.taskIndex == m.cursor {
+				cursorLineIdx = i
 				cursorRenderedPos = renderedPos
 				break
 			}
@@ -809,6 +809,19 @@ func (m model) View() string {
 				endLine = i + 1
 			}
 
+			// Ensure cursor line is included in visible range
+			// If cursor is past endLine, adjust startLine to include it
+			if cursorLineIdx >= endLine {
+				// Start from cursor and work backwards to fill visible area
+				endLine = cursorLineIdx + 1
+				renderedCount = lineHeights[cursorLineIdx]
+				startLine = cursorLineIdx
+				for i := cursorLineIdx - 1; i >= 0 && renderedCount+lineHeights[i] <= visibleHeight; i-- {
+					renderedCount += lineHeights[i]
+					startLine = i
+				}
+			}
+
 			// Make sure we don't start too late (leaving empty space at bottom)
 			for startLine > 0 {
 				renderedCount := 0
@@ -831,6 +844,11 @@ func (m model) View() string {
 				renderedCount += lineHeights[i]
 				endLine = i + 1
 			}
+
+			// Final check: ensure cursor is visible
+			if cursorLineIdx >= endLine {
+				endLine = cursorLineIdx + 1
+			}
 		}
 
 		// Render visible lines
@@ -838,16 +856,26 @@ func (m model) View() string {
 			b.WriteString(lines[i].content + "\n")
 		}
 
-		// Show scroll indicators if needed
+		// Build help line with scroll indicator on the right
+		helpText := "↑/k up • ↓/j down • space/enter toggle • r refresh • q quit"
 		if totalRenderedLines > visibleHeight {
-			scrollInfo := fileStyle.Render(fmt.Sprintf("  [%d-%d of %d items]", startLine+1, endLine, len(lines)))
-			b.WriteString(scrollInfo + "\n")
+			scrollInfo := fmt.Sprintf("[%d-%d of %d]", startLine+1, endLine, len(lines))
+			// Calculate padding to right-align scroll info
+			padding := m.windowWidth - len(helpText) - len(scrollInfo) - 1
+			if padding < 2 {
+				padding = 2
+			}
+			helpText = helpText + strings.Repeat(" ", padding) + scrollInfo
 		}
+		help := helpStyle.Render(helpText)
+		b.WriteString("\n" + help)
 	}
 
-	// Help
-	help := helpStyle.Render("↑/k up • ↓/j down • space/enter toggle • r refresh • q quit")
-	b.WriteString("\n" + help)
+	if len(m.tasks) == 0 {
+		// Help for empty state
+		help := helpStyle.Render("↑/k up • ↓/j down • space/enter toggle • r refresh • q quit")
+		b.WriteString("\n" + help)
+	}
 
 	return b.String()
 }
