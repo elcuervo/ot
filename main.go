@@ -554,7 +554,7 @@ func (m model) View() string {
 	var b strings.Builder
 
 	// Title
-	title := titleStyle.Render(fmt.Sprintf("mt - Tasks from %s", m.vaultPath))
+	title := titleStyle.Render(fmt.Sprintf("ot - Tasks from %s", m.vaultPath))
 	b.WriteString(title + "\n")
 
 	// Task list
@@ -655,7 +655,7 @@ func main() {
 
 	args := flag.Args()
 	if len(args) < 1 {
-		fmt.Println("Usage: mt <query-file.md> --vault <path>")
+		fmt.Println("Usage: ot <query-file.md> --vault <path>")
 		fmt.Println("\nOptions:")
 		fmt.Println("  --vault <path>  Path to Obsidian vault (required)")
 		fmt.Println("  --list          List tasks without TUI")
@@ -668,7 +668,7 @@ func main() {
 		fmt.Println("  group by filename     Group tasks by filename")
 		fmt.Println("\nDate values: today, tomorrow, yesterday, or YYYY-MM-DD")
 		fmt.Println("\nExample:")
-		fmt.Println("  mt --vault ~/obsidian-vault query.md")
+		fmt.Println("  ot --vault ~/obsidian-vault query.md")
 		os.Exit(1)
 	}
 

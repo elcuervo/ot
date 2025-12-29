@@ -1,4 +1,4 @@
-module github.com/elcuervo/mt
+module github.com/elcuervo/ot
 
 go 1.25.4
 

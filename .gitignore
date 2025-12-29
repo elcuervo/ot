@@ -1,2 +1,5 @@
-mt
+ot
 *.exe
+
+test-vault/
+query-today.md
