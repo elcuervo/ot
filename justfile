@@ -22,6 +22,9 @@ vet:
 
 lint: fmt vet
 
+demo: build
+  ./ot --vault ./examples/vault ./examples/query.md
+
 clean:
     rm -f ot coverage.out coverage.html
 
