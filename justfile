@@ -1,0 +1,32 @@
+default:
+    @just --list
+
+test:
+    go test -v ./...
+
+test-coverage:
+    go test -v -coverprofile=coverage.out ./...
+    go tool cover -html=coverage.out -o coverage.html
+
+test-watch:
+    find . -name '*.go' | entr -c go test -v ./...
+
+build:
+    go build -o ot .
+
+fmt:
+    go fmt ./...
+
+vet:
+    go vet ./...
+
+lint: fmt vet
+
+clean:
+    rm -f ot coverage.out coverage.html
+
+run vault query:
+    go run . --vault {{vault}} {{query}}
+
+list vault query:
+    go run . --vault {{vault}} --list {{query}}
