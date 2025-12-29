@@ -440,14 +440,16 @@ type QuerySection struct {
 
 // TUI Model
 type model struct {
-	sections  []QuerySection
-	tasks     []*Task // Flat list of all tasks for navigation
-	cursor    int
-	vaultPath string
-	queryFile string   // Path to query file for refresh
-	queries   []*Query // Parsed queries for refresh
-	quitting  bool
-	err       error
+	sections     []QuerySection
+	tasks        []*Task // Flat list of all tasks for navigation
+	cursor       int
+	vaultPath    string
+	queryFile    string   // Path to query file for refresh
+	queries      []*Query // Parsed queries for refresh
+	quitting     bool
+	err          error
+	windowHeight int // Terminal height for scrolling
+	windowWidth  int // Terminal width
 }
 
 func newModel(sections []QuerySection, vaultPath string, queryFile string, queries []*Query) model {
@@ -476,16 +478,18 @@ func newModel(sections []QuerySection, vaultPath string, queryFile string, queri
 	}
 
 	return model{
-		sections:  sections,
-		tasks:     tasks,
-		vaultPath: vaultPath,
-		queryFile: queryFile,
-		queries:   queries,
+		sections:     sections,
+		tasks:        tasks,
+		vaultPath:    vaultPath,
+		queryFile:    queryFile,
+		queries:      queries,
+		windowHeight: 24, // Default height, will be updated on WindowSizeMsg
+		windowWidth:  80, // Default width
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	return nil
+	return tea.WindowSize()
 }
 
 // refresh re-scans the vault and rebuilds sections from the stored queries
@@ -549,6 +553,10 @@ func (m *model) refresh() {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.windowHeight = msg.Height
+		m.windowWidth = msg.Width
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -630,6 +638,12 @@ var sectionStyle = lipgloss.NewStyle().
 var countStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color("245"))
 
+// viewLine represents a renderable line with its associated task index (or -1 for non-task lines)
+type viewLine struct {
+	content   string
+	taskIndex int // -1 for header lines, >= 0 for task lines
+}
+
 func (m model) View() string {
 	if m.err != nil {
 		return fmt.Sprintf("Error: %v\n\nPress q to quit.", m.err)
@@ -649,24 +663,36 @@ func (m model) View() string {
 	if len(m.tasks) == 0 {
 		b.WriteString("\nNo tasks found.\n")
 	} else {
+		// Build all lines first
+		var lines []viewLine
 		taskIndex := 0
+
 		for _, section := range m.sections {
 			// Show section header with task count
 			if section.Name != "" {
 				count := len(section.Tasks)
 				countText := countStyle.Render(fmt.Sprintf(" (%d)", count))
-				b.WriteString(sectionStyle.Render(fmt.Sprintf("## %s", section.Name)) + countText + "\n")
+				lines = append(lines, viewLine{
+					content:   sectionStyle.Render(fmt.Sprintf("## %s", section.Name)) + countText,
+					taskIndex: -1,
+				})
 			}
 
 			if len(section.Tasks) == 0 {
-				b.WriteString(fileStyle.Render("  (no matching tasks)") + "\n")
+				lines = append(lines, viewLine{
+					content:   fileStyle.Render("  (no matching tasks)"),
+					taskIndex: -1,
+				})
 				continue
 			}
 
 			for _, group := range section.Groups {
 				// Show group header if grouping is active
 				if section.Query.GroupBy != "" && group.Name != "" {
-					b.WriteString(groupStyle.Render(fmt.Sprintf("  ### %s", group.Name)) + "\n")
+					lines = append(lines, viewLine{
+						content:   groupStyle.Render(fmt.Sprintf("  ### %s", group.Name)),
+						taskIndex: -1,
+					})
 				}
 
 				for _, task := range group.Tasks {
@@ -706,10 +732,116 @@ func (m model) View() string {
 						line = selectedStyle.Render(line)
 					}
 
-					b.WriteString(fmt.Sprintf("%s%s%s\n", cursor, line, fileInfo))
+					lines = append(lines, viewLine{
+						content:   fmt.Sprintf("%s%s%s", cursor, line, fileInfo),
+						taskIndex: taskIndex,
+					})
 					taskIndex++
 				}
 			}
+		}
+
+		// Calculate visible window
+		// Reserved lines breakdown:
+		// - Title: 1 line + MarginBottom(1) = 2 lines
+		// - Help: MarginTop(1) + 1 line = 2 lines
+		// - Scroll indicator: 1 line (when present)
+		// - Safety margin: 1 line
+		reservedLines := 6
+		visibleHeight := m.windowHeight - reservedLines
+		if visibleHeight < 3 {
+			visibleHeight = 3
+		}
+
+		// Build a mapping from viewLine index to actual rendered line count
+		// (accounting for lipgloss margins which add newlines)
+		lineHeights := make([]int, len(lines))
+		totalRenderedLines := 0
+		for i, line := range lines {
+			// Count newlines in the content (margins render as \n)
+			height := 1 + strings.Count(line.content, "\n")
+			lineHeights[i] = height
+			totalRenderedLines += height
+		}
+
+		// Find the cursor's rendered position (in terminal lines)
+		cursorRenderedPos := 0
+		renderedPos := 0
+		for i, line := range lines {
+			if line.taskIndex == m.cursor {
+				cursorRenderedPos = renderedPos
+				break
+			}
+			renderedPos += lineHeights[i]
+		}
+
+		// Calculate scroll offset to keep cursor visible
+		startLine := 0
+		endLine := len(lines)
+
+		if totalRenderedLines > visibleHeight {
+			// Find startLine such that cursor is visible and roughly centered
+			targetStart := cursorRenderedPos - visibleHeight/2
+
+			// Find which viewLine index corresponds to this rendered position
+			renderedPos = 0
+			for i := range lines {
+				if renderedPos >= targetStart {
+					startLine = i
+					break
+				}
+				renderedPos += lineHeights[i]
+			}
+
+			// Clamp startLine to valid range
+			if startLine < 0 {
+				startLine = 0
+			}
+
+			// Find endLine that fits within visibleHeight
+			renderedCount := 0
+			for i := startLine; i < len(lines); i++ {
+				if renderedCount+lineHeights[i] > visibleHeight {
+					endLine = i
+					break
+				}
+				renderedCount += lineHeights[i]
+				endLine = i + 1
+			}
+
+			// Make sure we don't start too late (leaving empty space at bottom)
+			for startLine > 0 {
+				renderedCount := 0
+				for i := startLine; i < len(lines); i++ {
+					renderedCount += lineHeights[i]
+				}
+				if renderedCount >= visibleHeight {
+					break
+				}
+				startLine--
+			}
+
+			// Recalculate endLine after potential startLine adjustment
+			renderedCount = 0
+			for i := startLine; i < len(lines); i++ {
+				if renderedCount+lineHeights[i] > visibleHeight {
+					endLine = i
+					break
+				}
+				renderedCount += lineHeights[i]
+				endLine = i + 1
+			}
+		}
+
+		// Render visible lines
+		for i := startLine; i < endLine; i++ {
+			b.WriteString(lines[i].content + "\n")
+		}
+
+		// Show scroll indicators if needed
+		if totalRenderedLines > visibleHeight {
+			scrollInfo := fileStyle.Render(fmt.Sprintf("  [%d-%d of %d items]", startLine+1, endLine, len(lines)))
+			b.WriteString(scrollInfo + "\n")
 		}
 	}
 
