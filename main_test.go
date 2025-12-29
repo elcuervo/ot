@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestTaskToggle(t *testing.T) {
@@ -355,5 +356,222 @@ func TestGroupTasksByFolder(t *testing.T) {
 	}
 	if projectsCount != 2 {
 		t.Errorf("Expected 2 tasks in projects, got %d", projectsCount)
+	}
+}
+
+func TestParseDueDate(t *testing.T) {
+	tests := []struct {
+		name        string
+		description string
+		wantDate    string
+		wantNil     bool
+	}{
+		{
+			name:        "task with due date",
+			description: "Morning standup 📅 2025-12-29",
+			wantDate:    "2025-12-29",
+			wantNil:     false,
+		},
+		{
+			name:        "task without due date",
+			description: "Simple task without date",
+			wantDate:    "",
+			wantNil:     true,
+		},
+		{
+			name:        "task with due date and priority",
+			description: "Important task 📅 2025-01-15 ⏫",
+			wantDate:    "2025-01-15",
+			wantNil:     false,
+		},
+		{
+			name:        "task with multiple emojis",
+			description: "Task 🔁 every day 📅 2025-06-01 ✅ 2025-05-01",
+			wantDate:    "2025-06-01",
+			wantNil:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseDueDate(tt.description)
+			if tt.wantNil {
+				if got != nil {
+					t.Errorf("Expected nil, got %v", got)
+				}
+			} else {
+				if got == nil {
+					t.Error("Expected non-nil date")
+				} else if got.Format("2006-01-02") != tt.wantDate {
+					t.Errorf("Got %s, want %s", got.Format("2006-01-02"), tt.wantDate)
+				}
+			}
+		})
+	}
+}
+
+func TestParseQueryFileDateFilters(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name             string
+		content          string
+		wantFilterCount  int
+		wantFirstField   string
+		wantFirstOp      string
+		wantFirstDate    string
+	}{
+		{
+			name:            "due today",
+			content:         "```tasks\nnot done\ndue today\n```\n",
+			wantFilterCount: 1,
+			wantFirstField:  "due",
+			wantFirstOp:     "on",
+			wantFirstDate:   "today",
+		},
+		{
+			name:            "due tomorrow",
+			content:         "```tasks\ndue tomorrow\n```\n",
+			wantFilterCount: 1,
+			wantFirstField:  "due",
+			wantFirstOp:     "on",
+			wantFirstDate:   "tomorrow",
+		},
+		{
+			name:            "due before specific date",
+			content:         "```tasks\ndue before 2025-12-31\n```\n",
+			wantFilterCount: 1,
+			wantFirstField:  "due",
+			wantFirstOp:     "before",
+			wantFirstDate:   "2025-12-31",
+		},
+		{
+			name:            "due after specific date",
+			content:         "```tasks\ndue after 2025-01-01\n```\n",
+			wantFilterCount: 1,
+			wantFirstField:  "due",
+			wantFirstOp:     "after",
+			wantFirstDate:   "2025-01-01",
+		},
+		{
+			name:            "due on specific date",
+			content:         "```tasks\ndue on 2025-06-15\n```\n",
+			wantFilterCount: 1,
+			wantFirstField:  "due",
+			wantFirstOp:     "on",
+			wantFirstDate:   "2025-06-15",
+		},
+		{
+			name:            "no date filter",
+			content:         "```tasks\nnot done\n```\n",
+			wantFilterCount: 0,
+		},
+		{
+			name:            "scheduled today",
+			content:         "```tasks\nscheduled today\n```\n",
+			wantFilterCount: 1,
+			wantFirstField:  "scheduled",
+			wantFirstOp:     "on",
+			wantFirstDate:   "today",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testFile := filepath.Join(tmpDir, tt.name+".md")
+			err := os.WriteFile(testFile, []byte(tt.content), 0644)
+			if err != nil {
+				t.Fatalf("Failed to create test file: %v", err)
+			}
+
+			query, err := parseQueryFileExtended(testFile)
+			if err != nil {
+				t.Fatalf("parseQueryFileExtended failed: %v", err)
+			}
+
+			if len(query.DateFilters) != tt.wantFilterCount {
+				t.Errorf("DateFilters count = %d, want %d", len(query.DateFilters), tt.wantFilterCount)
+			}
+
+			if tt.wantFilterCount > 0 {
+				f := query.DateFilters[0]
+				if f.Field != tt.wantFirstField {
+					t.Errorf("Field = %q, want %q", f.Field, tt.wantFirstField)
+				}
+				if f.Operator != tt.wantFirstOp {
+					t.Errorf("Operator = %q, want %q", f.Operator, tt.wantFirstOp)
+				}
+				if f.Date != tt.wantFirstDate {
+					t.Errorf("Date = %q, want %q", f.Date, tt.wantFirstDate)
+				}
+			}
+		})
+	}
+}
+
+func TestMatchDateFilter(t *testing.T) {
+	// Use fixed dates for testing
+	parseDate := func(s string) *time.Time {
+		d, _ := time.Parse("2006-01-02", s)
+		return &d
+	}
+
+	tests := []struct {
+		name    string
+		task    *Task
+		filter  DateFilter
+		want    bool
+	}{
+		{
+			name:   "task on target date",
+			task:   &Task{DueDate: parseDate("2025-12-29")},
+			filter: DateFilter{Field: "due", Operator: "on", Date: "2025-12-29"},
+			want:   true,
+		},
+		{
+			name:   "task not on target date",
+			task:   &Task{DueDate: parseDate("2025-12-30")},
+			filter: DateFilter{Field: "due", Operator: "on", Date: "2025-12-29"},
+			want:   false,
+		},
+		{
+			name:   "task before target date",
+			task:   &Task{DueDate: parseDate("2025-12-28")},
+			filter: DateFilter{Field: "due", Operator: "before", Date: "2025-12-29"},
+			want:   true,
+		},
+		{
+			name:   "task not before target date",
+			task:   &Task{DueDate: parseDate("2025-12-29")},
+			filter: DateFilter{Field: "due", Operator: "before", Date: "2025-12-29"},
+			want:   false,
+		},
+		{
+			name:   "task after target date",
+			task:   &Task{DueDate: parseDate("2025-12-30")},
+			filter: DateFilter{Field: "due", Operator: "after", Date: "2025-12-29"},
+			want:   true,
+		},
+		{
+			name:   "task not after target date",
+			task:   &Task{DueDate: parseDate("2025-12-29")},
+			filter: DateFilter{Field: "due", Operator: "after", Date: "2025-12-29"},
+			want:   false,
+		},
+		{
+			name:   "nil task date",
+			task:   &Task{DueDate: nil},
+			filter: DateFilter{Field: "due", Operator: "on", Date: "2025-12-29"},
+			want:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := matchDateFilter(tt.task, tt.filter)
+			if got != tt.want {
+				t.Errorf("matchDateFilter() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
