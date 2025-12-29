@@ -118,22 +118,113 @@ func parseFile(filePath string) ([]*Task, error) {
 	return tasks, scanner.Err()
 }
 
-// parseQueryFile checks if the query file contains "not done" filter
+// Query represents parsed query options
+type Query struct {
+	NotDone bool
+	GroupBy string // "folder", "filename", or ""
+}
+
+// parseQueryFile checks if the query file contains "not done" filter (simple version)
 func parseQueryFile(filePath string) (bool, error) {
-	content, err := os.ReadFile(filePath)
+	query, err := parseQueryFileExtended(filePath)
 	if err != nil {
 		return false, err
 	}
+	return query.NotDone, nil
+}
 
-	// Find ```tasks block
-	blockRe := regexp.MustCompile("(?s)```tasks\\s*\\n(.+?)```")
-	matches := blockRe.FindStringSubmatch(string(content))
-	if matches == nil {
-		return false, fmt.Errorf("no ```tasks block found in %s", filePath)
+// parseQueryFileExtended parses the query file and extracts all supported options
+// It combines settings from all ```tasks blocks in the file
+func parseQueryFileExtended(filePath string) (*Query, error) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
 	}
 
-	queryContent := matches[1]
-	return strings.Contains(queryContent, "not done"), nil
+	// Find all ```tasks blocks
+	blockRe := regexp.MustCompile("(?s)```tasks\\s*\\n(.+?)```")
+	matches := blockRe.FindAllStringSubmatch(string(content), -1)
+	if matches == nil {
+		return nil, fmt.Errorf("no ```tasks block found in %s", filePath)
+	}
+
+	query := &Query{}
+	groupByFuncRe := regexp.MustCompile(`group by function task\.file\.(\w+)`)
+	groupBySimpleRe := regexp.MustCompile(`group by (\w+)`)
+
+	// Combine settings from all blocks
+	for _, match := range matches {
+		queryContent := match[1]
+
+		// Parse filters
+		if strings.Contains(queryContent, "not done") {
+			query.NotDone = true
+		}
+
+		// Parse group by - supports both simple and function syntax
+		// Simple: "group by folder", "group by filename"
+		// Function: "group by function task.file.folder"
+		if query.GroupBy == "" {
+			if funcMatch := groupByFuncRe.FindStringSubmatch(queryContent); funcMatch != nil {
+				query.GroupBy = funcMatch[1]
+			} else if simpleMatch := groupBySimpleRe.FindStringSubmatch(queryContent); simpleMatch != nil {
+				// Skip "function" as a group by value
+				if simpleMatch[1] != "function" {
+					query.GroupBy = simpleMatch[1]
+				}
+			}
+		}
+	}
+
+	return query, nil
+}
+
+// TaskGroup represents a group of tasks
+type TaskGroup struct {
+	Name  string
+	Tasks []*Task
+}
+
+// groupTasks groups tasks by the specified field
+func groupTasks(tasks []*Task, groupBy string, vaultPath string) []TaskGroup {
+	if groupBy == "" {
+		return []TaskGroup{{Name: "", Tasks: tasks}}
+	}
+
+	groups := make(map[string][]*Task)
+	var order []string
+
+	for _, task := range tasks {
+		var key string
+		relPath, _ := filepath.Rel(vaultPath, task.FilePath)
+
+		switch groupBy {
+		case "folder":
+			key = filepath.Dir(relPath)
+			if key == "." {
+				key = "/"
+			}
+		case "filename":
+			key = filepath.Base(task.FilePath)
+		default:
+			key = ""
+		}
+
+		if _, exists := groups[key]; !exists {
+			order = append(order, key)
+		}
+		groups[key] = append(groups[key], task)
+	}
+
+	result := make([]TaskGroup, 0, len(order))
+	for _, name := range order {
+		result = append(result, TaskGroup{
+			Name:  name,
+			Tasks: groups[name],
+		})
+	}
+
+	return result
 }
 
 // saveTask writes the modified task back to its source file
@@ -163,17 +254,27 @@ func saveTask(task *Task) error {
 
 // TUI Model
 type model struct {
-	tasks     []*Task
+	groups    []TaskGroup
+	tasks     []*Task // Flat list for navigation
 	cursor    int
 	vaultPath string
+	groupBy   string
 	quitting  bool
 	err       error
 }
 
-func newModel(tasks []*Task, vaultPath string) model {
+func newModel(groups []TaskGroup, vaultPath string, groupBy string) model {
+	// Create flat task list for navigation
+	var tasks []*Task
+	for _, g := range groups {
+		tasks = append(tasks, g.Tasks...)
+	}
+
 	return model{
+		groups:    groups,
 		tasks:     tasks,
 		vaultPath: vaultPath,
+		groupBy:   groupBy,
 	}
 }
 
@@ -249,6 +350,11 @@ var (
 
 	cursorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("212"))
+
+	groupStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("99")).
+			MarginTop(1)
 )
 
 func (m model) View() string {
@@ -279,45 +385,59 @@ func (m model) View() string {
 	if len(m.tasks) == 0 {
 		b.WriteString("\nNo tasks found.\n")
 	} else {
-		for i, task := range m.tasks {
-			cursor := "  "
-			if m.cursor == i {
-				cursor = cursorStyle.Render("> ")
+		taskIndex := 0
+		for _, group := range m.groups {
+			// Show group header if grouping is active
+			if m.groupBy != "" && group.Name != "" {
+				b.WriteString(groupStyle.Render(fmt.Sprintf("## %s", group.Name)) + "\n")
 			}
 
-			// Build checkbox
-			checkbox := "[ ]"
-			if task.Done {
-				checkbox = "[x]"
-			}
+			for _, task := range group.Tasks {
+				cursor := "  "
+				if m.cursor == taskIndex {
+					cursor = cursorStyle.Render("> ")
+				}
 
-			// Get relative path for display
-			relPath := task.FilePath
-			if rel, err := filepath.Rel(m.vaultPath, task.FilePath); err == nil {
-				relPath = rel
-			}
-			fileInfo := fileStyle.Render(fmt.Sprintf("(%s:%d)", relPath, task.LineNumber))
+				// Build checkbox
+				checkbox := "[ ]"
+				if task.Done {
+					checkbox = "[x]"
+				}
 
-			// Format line
-			var line string
-			if task.Done {
-				line = doneStyle.Render(fmt.Sprintf("%s %s", checkbox, task.Description))
-			} else {
-				line = fmt.Sprintf("%s %s", checkbox, task.Description)
-			}
+				// Get relative path for display (only show if not grouping by filename)
+				fileInfo := ""
+				if m.groupBy != "filename" {
+					relPath := task.FilePath
+					if rel, err := filepath.Rel(m.vaultPath, task.FilePath); err == nil {
+						relPath = rel
+					}
+					fileInfo = fileStyle.Render(fmt.Sprintf(" (%s:%d)", relPath, task.LineNumber))
+				} else {
+					fileInfo = fileStyle.Render(fmt.Sprintf(" (:%d)", task.LineNumber))
+				}
 
-			// Highlight if selected
-			if m.cursor == i {
-				line = selectedStyle.Render(line)
-			}
+				// Format line
+				var line string
+				if task.Done {
+					line = doneStyle.Render(fmt.Sprintf("%s %s", checkbox, task.Description))
+				} else {
+					line = fmt.Sprintf("%s %s", checkbox, task.Description)
+				}
 
-			// Mark modified tasks
-			modified := ""
-			if task.Modified {
-				modified = " *"
-			}
+				// Highlight if selected
+				if m.cursor == taskIndex {
+					line = selectedStyle.Render(line)
+				}
 
-			b.WriteString(fmt.Sprintf("%s%s %s%s\n", cursor, line, fileInfo, modified))
+				// Mark modified tasks
+				modified := ""
+				if task.Modified {
+					modified = " *"
+				}
+
+				b.WriteString(fmt.Sprintf("%s%s%s%s\n", cursor, line, fileInfo, modified))
+				taskIndex++
+			}
 		}
 	}
 
@@ -340,6 +460,10 @@ func main() {
 		fmt.Println("\nOptions:")
 		fmt.Println("  --vault <path>  Path to Obsidian vault (required)")
 		fmt.Println("  --list          List tasks without TUI")
+		fmt.Println("\nSupported query filters:")
+		fmt.Println("  not done        Show only incomplete tasks")
+		fmt.Println("  group by folder Group tasks by folder")
+		fmt.Println("  group by filename Group tasks by filename")
 		fmt.Println("\nExample:")
 		fmt.Println("  mt --vault ~/obsidian-vault query.md")
 		os.Exit(1)
@@ -353,7 +477,7 @@ func main() {
 	}
 
 	// Parse query file
-	filterNotDone, err := parseQueryFile(queryFile)
+	query, err := parseQueryFileExtended(queryFile)
 	if err != nil {
 		fmt.Printf("Error parsing query file: %v\n", err)
 		os.Exit(1)
@@ -380,7 +504,7 @@ func main() {
 	// Apply filter
 	var filteredTasks []*Task
 	for _, task := range allTasks {
-		if filterNotDone && task.Done {
+		if query.NotDone && task.Done {
 			continue // Skip done tasks if "not done" filter is active
 		}
 		filteredTasks = append(filteredTasks, task)
@@ -391,25 +515,36 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Group tasks
+	groups := groupTasks(filteredTasks, query.GroupBy, *vaultPath)
+
 	// List mode (non-interactive)
 	if *listOnly {
 		fmt.Printf("Found %d task(s):\n\n", len(filteredTasks))
-		for _, task := range filteredTasks {
-			relPath := task.FilePath
-			if rel, err := filepath.Rel(*vaultPath, task.FilePath); err == nil {
-				relPath = rel
+		for _, group := range groups {
+			if query.GroupBy != "" && group.Name != "" {
+				fmt.Printf("## %s\n", group.Name)
 			}
-			checkbox := "[ ]"
-			if task.Done {
-				checkbox = "[x]"
+			for _, task := range group.Tasks {
+				relPath := task.FilePath
+				if rel, err := filepath.Rel(*vaultPath, task.FilePath); err == nil {
+					relPath = rel
+				}
+				checkbox := "[ ]"
+				if task.Done {
+					checkbox = "[x]"
+				}
+				fmt.Printf("%s %s (%s:%d)\n", checkbox, task.Description, relPath, task.LineNumber)
 			}
-			fmt.Printf("%s %s (%s:%d)\n", checkbox, task.Description, relPath, task.LineNumber)
+			if query.GroupBy != "" {
+				fmt.Println()
+			}
 		}
 		os.Exit(0)
 	}
 
 	// Run TUI
-	p := tea.NewProgram(newModel(filteredTasks, *vaultPath), tea.WithAltScreen())
+	p := tea.NewProgram(newModel(groups, *vaultPath, query.GroupBy), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running TUI: %v\n", err)
 		os.Exit(1)
