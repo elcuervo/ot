@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"cmp"
+	_ "embed"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,6 +17,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+//go:embed VERSION
+var version string
 
 const (
 	defaultWindowHeight = 24
@@ -791,31 +795,106 @@ type model struct {
 	err          error
 	windowHeight int // Terminal height for scrolling
 	windowWidth  int // Terminal width
+
+	// Search state
+	searching        bool             // Whether search mode is active
+	searchQuery      string           // Current search input
+	searchNavigating bool             // Whether navigating results (vs typing)
+	filteredTasks    []*Task          // Tasks matching search query
+	taskToSection    map[*Task]string // Map task to its section name for search
+	taskToGroup      map[*Task]string // Map task to its group name for search
 }
 
 func newModel(sections []QuerySection, vaultPath string, titleName string, queryFile string, queries []*Query) model {
-	// Build flat task list from all sections
+	// Build flat task list from all sections and task-to-section/group maps
 	var tasks []*Task
+	taskToSection := make(map[*Task]string)
+	taskToGroup := make(map[*Task]string)
 	for _, s := range sections {
 		for _, g := range s.Groups {
-			tasks = append(tasks, g.Tasks...)
+			for _, task := range g.Tasks {
+				tasks = append(tasks, task)
+				taskToSection[task] = s.Name
+				taskToGroup[task] = g.Name
+			}
 		}
 	}
 
 	return model{
-		sections:     sections,
-		tasks:        tasks,
-		vaultPath:    vaultPath,
-		titleName:    titleName,
-		queryFile:    queryFile,
-		queries:      queries,
-		windowHeight: defaultWindowHeight,
-		windowWidth:  defaultWindowWidth,
+		sections:      sections,
+		tasks:         tasks,
+		vaultPath:     vaultPath,
+		titleName:     titleName,
+		queryFile:     queryFile,
+		queries:       queries,
+		windowHeight:  defaultWindowHeight,
+		windowWidth:   defaultWindowWidth,
+		taskToSection: taskToSection,
+		taskToGroup:   taskToGroup,
 	}
 }
 
 func (m model) Init() tea.Cmd {
 	return tea.WindowSize()
+}
+
+// filterBySearch filters tasks based on search query (matches task description, section name, or group name)
+func (m *model) filterBySearch() {
+	if m.searchQuery == "" {
+		m.filteredTasks = nil
+		return
+	}
+
+	query := strings.ToLower(m.searchQuery)
+	var filtered []*Task
+	seen := make(map[*Task]bool)
+
+	for _, task := range m.tasks {
+		// Skip duplicates
+		if seen[task] {
+			continue
+		}
+
+		// Match against task description
+		if strings.Contains(strings.ToLower(task.Description), query) {
+			filtered = append(filtered, task)
+			seen[task] = true
+			continue
+		}
+
+		// Match against section/category name
+		sectionName := m.taskToSection[task]
+		if strings.Contains(strings.ToLower(sectionName), query) {
+			filtered = append(filtered, task)
+			seen[task] = true
+			continue
+		}
+
+		// Match against group name (folder/filename)
+		groupName := m.taskToGroup[task]
+		if strings.Contains(strings.ToLower(groupName), query) {
+			filtered = append(filtered, task)
+			seen[task] = true
+		}
+	}
+
+	m.filteredTasks = filtered
+
+	// Reset cursor to valid range
+	if m.cursor >= len(filtered) {
+		m.cursor = len(filtered) - 1
+	}
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+}
+
+// activeTasks returns the current task list (filtered or all)
+func (m *model) activeTasks() []*Task {
+	if m.searching && m.searchQuery != "" {
+		return m.filteredTasks
+	}
+	return m.tasks
 }
 
 // refresh re-scans the vault and rebuilds sections from the stored queries
@@ -864,14 +943,29 @@ func (m *model) refresh() {
 		})
 	}
 
-	// Rebuild flat task list
+	// Rebuild flat task list and task-to-section/group maps
 	var tasks []*Task
+	taskToSection := make(map[*Task]string)
+	taskToGroup := make(map[*Task]string)
 	for _, s := range sections {
-		tasks = append(tasks, s.Tasks...)
+		for _, g := range s.Groups {
+			for _, task := range g.Tasks {
+				tasks = append(tasks, task)
+				taskToSection[task] = s.Name
+				taskToGroup[task] = g.Name
+			}
+		}
 	}
 
 	m.sections = sections
 	m.tasks = tasks
+	m.taskToSection = taskToSection
+	m.taskToGroup = taskToGroup
+
+	// Re-apply search filter if active
+	if m.searching && m.searchQuery != "" {
+		m.filterBySearch()
+	}
 
 	// Adjust cursor if needed
 	if m.cursor >= len(m.tasks) {
@@ -889,10 +983,123 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.windowWidth = msg.Width
 
 	case tea.KeyMsg:
+		// Handle search mode input
+		if m.searching {
+			// Navigation mode within search (after pressing Enter)
+			if m.searchNavigating {
+				switch msg.String() {
+				case "esc", "ctrl+[", "/":
+					// Exit search mode entirely
+					m.searching = false
+					m.searchNavigating = false
+					m.searchQuery = ""
+					m.filteredTasks = nil
+					m.cursor = 0
+					return m, nil
+
+				case "backspace":
+					// Go back to typing mode
+					m.searchNavigating = false
+					return m, nil
+
+				case "up", "k":
+					if m.cursor > 0 {
+						m.cursor--
+					}
+					return m, nil
+
+				case "down", "j":
+					tasks := m.activeTasks()
+					if m.cursor < len(tasks)-1 {
+						m.cursor++
+					}
+					return m, nil
+
+				case "ctrl+c":
+					m.quitting = true
+					return m, tea.Quit
+
+				case "enter", " ", "x":
+					// Toggle task in search mode
+					tasks := m.activeTasks()
+					if len(tasks) > 0 && m.cursor < len(tasks) {
+						task := tasks[m.cursor]
+						task.Toggle()
+						if err := saveTask(task); err != nil {
+							m.err = err
+						}
+					}
+					return m, nil
+				}
+				return m, nil
+			}
+
+			// Typing mode - all keys are input except special ones
+			switch msg.String() {
+			case "esc", "ctrl+[":
+				// Exit search mode
+				m.searching = false
+				m.searchQuery = ""
+				m.filteredTasks = nil
+				m.cursor = 0
+				return m, nil
+
+			case "enter":
+				// Switch to navigation mode if we have results
+				if len(m.filteredTasks) > 0 {
+					m.searchNavigating = true
+				} else if m.searchQuery == "" {
+					// Empty search, exit
+					m.searching = false
+				}
+				return m, nil
+
+			case "backspace":
+				if len(m.searchQuery) > 0 {
+					m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
+					m.filterBySearch()
+				}
+				return m, nil
+
+			case "ctrl+c":
+				m.quitting = true
+				return m, tea.Quit
+
+			case "up":
+				if m.cursor > 0 {
+					m.cursor--
+				}
+				return m, nil
+
+			case "down":
+				tasks := m.activeTasks()
+				if m.cursor < len(tasks)-1 {
+					m.cursor++
+				}
+				return m, nil
+
+			default:
+				// Add character to search query (only printable characters)
+				if len(msg.String()) == 1 {
+					m.searchQuery += msg.String()
+					m.filterBySearch()
+				}
+				return m, nil
+			}
+		}
+
+		// Normal mode keybindings
 		switch msg.String() {
 		case "q", "ctrl+c":
 			m.quitting = true
 			return m, tea.Quit
+
+		case "/":
+			// Enter search mode
+			m.searching = true
+			m.searchQuery = ""
+			m.filteredTasks = nil
+			m.cursor = 0
 
 		case "up", "k":
 			if m.cursor > 0 {
@@ -971,6 +1178,17 @@ var sectionStyle = lipgloss.NewStyle().
 var countStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color("245"))
 
+var searchStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color("212")).
+	Bold(true)
+
+var matchStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color("214")).
+	Bold(true)
+
+var searchInputStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color("170"))
+
 // viewLine represents a renderable line with its associated task index (or -1 for non-task lines)
 type viewLine struct {
 	content   string
@@ -992,13 +1210,128 @@ func (m model) View() string {
 	titlePrefix := titleStyle.Render("ot - Tasks from ")
 	titleName := titleNameStyle.Render(m.titleName)
 
-	b.WriteString(titlePrefix + titleName + "\n\n")
+	b.WriteString(titlePrefix + titleName + "\n")
+
+	// Search bar (if in search mode)
+	if m.searching {
+		searchLabel := searchStyle.Render("/")
+		searchInput := searchInputStyle.Render(m.searchQuery)
+		if m.searchNavigating {
+			// No cursor when navigating
+			b.WriteString(searchLabel + searchInput + "\n")
+		} else {
+			// Show cursor when typing
+			cursorChar := searchStyle.Render("_")
+			b.WriteString(searchLabel + searchInput + cursorChar + "\n")
+		}
+	} else {
+		b.WriteString("\n")
+	}
 
 	// Task list
 	if len(m.tasks) == 0 {
 		b.WriteString("\nNo tasks found.\n")
+	} else if m.searching && m.searchQuery != "" {
+		// Search results view
+		tasks := m.activeTasks()
+
+		if len(tasks) == 0 {
+			b.WriteString(fileStyle.Render("  No matching tasks\n"))
+		} else {
+			var lines []viewLine
+
+			query := strings.ToLower(m.searchQuery)
+
+			for i, task := range tasks {
+				cursor := "  "
+				if m.cursor == i {
+					cursor = cursorStyle.Render("> ")
+				}
+
+				checkbox := "[ ]"
+				if task.Done {
+					checkbox = "[x]"
+				}
+
+				// Determine what matched for visual feedback
+				sectionName := m.taskToSection[task]
+				groupName := m.taskToGroup[task]
+				descLower := strings.ToLower(task.Description)
+
+				var matchInfo string
+				if strings.Contains(descLower, query) {
+					// Matched description - no extra indicator needed
+					matchInfo = ""
+				} else if strings.Contains(strings.ToLower(sectionName), query) {
+					// Matched section name
+					matchInfo = matchStyle.Render(fmt.Sprintf("→%s ", sectionName))
+				} else if strings.Contains(strings.ToLower(groupName), query) {
+					// Matched group name
+					matchInfo = matchStyle.Render(fmt.Sprintf("→%s ", groupName))
+				}
+
+				// Show section context
+				sectionInfo := ""
+				if sectionName != "" && matchInfo == "" {
+					sectionInfo = countStyle.Render(fmt.Sprintf("[%s] ", sectionName))
+				}
+				fileInfo := fileStyle.Render(fmt.Sprintf(" (%s:%d)", relPath(m.vaultPath, task.FilePath), task.LineNumber))
+
+				var line string
+				if task.Done {
+					line = doneStyle.Render(fmt.Sprintf("%s %s", checkbox, task.Description))
+				} else {
+					line = fmt.Sprintf("%s %s", checkbox, task.Description)
+				}
+
+				if m.cursor == i {
+					line = selectedStyle.Render(line)
+				}
+
+				lines = append(lines, viewLine{
+					content:   fmt.Sprintf("%s%s%s%s%s", cursor, matchInfo, sectionInfo, line, fileInfo),
+					taskIndex: i,
+				})
+			}
+
+			// Calculate visible window height (extra line for search bar)
+			visibleHeight := m.windowHeight - reservedUILines - 1
+			if visibleHeight < minVisibleHeight {
+				visibleHeight = minVisibleHeight
+			}
+
+			lineHeights := make([]int, len(lines))
+			totalRenderedLines := 0
+			for i, line := range lines {
+				height := 1 + strings.Count(line.content, "\n")
+				lineHeights[i] = height
+				totalRenderedLines += height
+			}
+
+			startLine, endLine := calculateVisibleRange(m.cursor, lineHeights, visibleHeight)
+
+			for i := startLine; i < endLine; i++ {
+				b.WriteString(lines[i].content + "\n")
+			}
+
+			// Search mode help - different text for typing vs navigating
+			var helpText string
+			if m.searchNavigating {
+				helpText = "↑/k up • ↓/j down • enter/space toggle • backspace edit • esc exit"
+			} else {
+				helpText = "type to search • ↑/↓ navigate • enter select • esc cancel"
+			}
+			matchInfo := fmt.Sprintf("[%d matches]", len(tasks))
+			padding := m.windowWidth - len(helpText) - len(matchInfo) - 1
+			if padding < 2 {
+				padding = 2
+			}
+			helpText = helpText + strings.Repeat(" ", padding) + matchInfo
+			help := helpStyle.Render(helpText)
+			b.WriteString("\n" + help)
+		}
 	} else {
-		// Build all lines first
+		// Normal view - Build all lines first
 		var lines []viewLine
 		taskIndex := 0
 
@@ -1133,7 +1466,7 @@ func (m model) View() string {
 		}
 
 		// Build help line with scroll indicator on the right
-		helpText := "↑/k up • ↓/j down • space/enter toggle • r refresh • q quit"
+		helpText := "↑/k up • ↓/j down • space/enter toggle • / search • r refresh • q quit"
 
 		if totalRenderedLines > visibleHeight {
 			scrollInfo := fmt.Sprintf("[%d-%d of %d]", startLine+1, endLine, len(lines))
@@ -1150,7 +1483,7 @@ func (m model) View() string {
 
 	if len(m.tasks) == 0 {
 		// Help for empty state
-		help := helpStyle.Render("↑/k up • ↓/j down • space/enter toggle • r refresh • q quit")
+		help := helpStyle.Render("↑/k up • ↓/j down • space/enter toggle • / search • r refresh • q quit")
 		b.WriteString("\n" + help)
 	}
 
@@ -1291,8 +1624,14 @@ func main() {
 	vaultPath := flag.String("vault", "", "Path to Obsidian vault")
 	listOnly := flag.Bool("list", false, "List tasks without TUI (non-interactive)")
 	profileName := flag.String("profile", "", "Profile name from config (optional)")
+	showVersion := flag.Bool("version", false, "Show version and exit")
 
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("ot version %s\n", strings.TrimSpace(version))
+		os.Exit(0)
+	}
 
 	args := flag.Args()
 	cfg, cfgPath, err := loadConfig()

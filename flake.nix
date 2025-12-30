@@ -10,6 +10,7 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        version = builtins.replaceStrings ["\n"] [""] (builtins.readFile ./VERSION);
       in
       {
         devShells.default = pkgs.mkShell {
@@ -32,7 +33,7 @@
 
         packages.default = pkgs.buildGoModule {
           pname = "ot";
-          version = "0.1.0";
+          inherit version;
           src = ./.;
           vendorHash = "sha256-KOlnzjPJv9OS1FvtVTxDEy/Vkiuww6Ts+kbnoKl8+w4=";
         };
