@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"cmp"
+	_ "embed"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,6 +17,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+//go:embed VERSION
+var version string
 
 const (
 	defaultWindowHeight = 24
@@ -1583,8 +1587,14 @@ func main() {
 	vaultPath := flag.String("vault", "", "Path to Obsidian vault")
 	listOnly := flag.Bool("list", false, "List tasks without TUI (non-interactive)")
 	profileName := flag.String("profile", "", "Profile name from config (optional)")
+	showVersion := flag.Bool("version", false, "Show version and exit")
 
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("ot version %s\n", strings.TrimSpace(version))
+		os.Exit(0)
+	}
 
 	args := flag.Args()
 	cfg, cfgPath, err := loadConfig()
