@@ -2,7 +2,7 @@
 
 CLI tool to interact with [Obsidian Tasks](https://publish.obsidian.md/tasks/Introduction)
 
-![VHS](https://vhs.charm.sh/vhs-2i4t7KMMFL2z6nXdZ679ND.gif)
+![VHS](https://vhs.charm.sh/vhs-3owqLj2zbZZTR93dPv4AZY.gif)
 
 ## Install
 
