@@ -795,6 +795,7 @@ type model struct {
 	err          error
 	windowHeight int // Terminal height for scrolling
 	windowWidth  int // Terminal width
+	aboutOpen    bool
 
 	// Search state
 	searching        bool             // Whether search mode is active
@@ -983,6 +984,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.windowWidth = msg.Width
 
 	case tea.KeyMsg:
+		if m.aboutOpen {
+			switch msg.String() {
+			case "esc", "ctrl+[", "q", "?":
+				m.aboutOpen = false
+				return m, nil
+			case "ctrl+c":
+				m.quitting = true
+				return m, tea.Quit
+			}
+			return m, nil
+		}
+
+		if msg.String() == "?" {
+			m.aboutOpen = true
+			return m, nil
+		}
+
 		// Handle search mode input
 		if m.searching {
 			// Navigation mode within search (after pressing Enter)
@@ -1154,16 +1172,19 @@ var (
 			Padding(0, 1)
 
 	resultsModeStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("231")).
-			Background(lipgloss.Color("214")).
-			Padding(0, 1)
+				Bold(true).
+				Foreground(lipgloss.Color("231")).
+				Background(lipgloss.Color("214")).
+				Padding(0, 1)
 
-	taskModeStyle = lipgloss.NewStyle().
+	aboutStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("231")).
-			Background(lipgloss.Color("28")).
-			Padding(0, 1)
+			Foreground(lipgloss.Color("white"))
+
+	aboutBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("241")).
+			Padding(1, 2)
 
 	selectedStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("212")).
@@ -1223,6 +1244,13 @@ func (m model) View() string {
 	}
 
 	var b strings.Builder
+	if m.aboutOpen {
+		aboutText := aboutStyle.Render("created with ☠️ by elcuervo")
+		aboutHelp := helpStyle.Render("press esc or q to close")
+		box := aboutBoxStyle.Render(aboutText + "\n" + aboutHelp)
+
+		return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
+	}
 
 	// Title
 	titlePrefix := titleStyle.Render("ot - Tasks from ")
@@ -1348,9 +1376,9 @@ func (m model) View() string {
 			// Search mode help - different text for typing vs navigating
 			var helpText string
 			if m.searchNavigating {
-				helpText = "↑/k up • ↓/j down • enter/space toggle • backspace edit • esc exit"
+				helpText = "↑/k up • ↓/j down • enter/space toggle • backspace edit • esc/q exit • ? about"
 			} else {
-				helpText = "type to search • ↑/↓ navigate • enter select • esc cancel"
+				helpText = "type to search • ↑/↓ navigate • enter select • esc cancel • ? about"
 			}
 			matchInfo := fmt.Sprintf("[%d matches]", len(tasks))
 			padding := m.windowWidth - len(helpText) - len(matchInfo) - 1
@@ -1497,7 +1525,7 @@ func (m model) View() string {
 		}
 
 		// Build help line with scroll indicator on the right
-		helpText := "↑/k up • ↓/j down • space/enter toggle • / search • r refresh • q quit"
+		helpText := "↑/k up • ↓/j down • space/enter toggle • / search • r refresh • q quit • ? about"
 
 		if totalRenderedLines > visibleHeight {
 			scrollInfo := fmt.Sprintf("[%d-%d of %d]", startLine+1, endLine, len(lines))
@@ -1514,7 +1542,7 @@ func (m model) View() string {
 
 	if len(m.tasks) == 0 {
 		// Help for empty state
-		help := helpStyle.Render("↑/k up • ↓/j down • space/enter toggle • / search • r refresh • q quit")
+		help := helpStyle.Render("↑/k up • ↓/j down • space/enter toggle • / search • r refresh • q quit • ? about")
 		b.WriteString("\n" + help)
 	}
 
