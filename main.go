@@ -1245,8 +1245,19 @@ func (m model) View() string {
 
 	var b strings.Builder
 	if m.aboutOpen {
-		aboutText := aboutStyle.Render("created with ☠️ by elcuervo")
-		aboutHelp := helpStyle.Render("press esc or q to close")
+		versionLine := fmt.Sprintf("ot %s", strings.TrimSpace(version))
+		creditLine := "created with ☠️ by elcuervo"
+		helpLine := "press esc or q to close"
+		contentWidth := lipgloss.Width(versionLine)
+		if width := lipgloss.Width(creditLine); width > contentWidth {
+			contentWidth = width
+		}
+		if width := lipgloss.Width(helpLine); width > contentWidth {
+			contentWidth = width
+		}
+		centered := lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center)
+		aboutText := aboutStyle.Render(centered.Render(versionLine) + "\n" + centered.Render(creditLine))
+		aboutHelp := helpStyle.Render(centered.Render(helpLine))
 		box := aboutBoxStyle.Render(aboutText + "\n" + aboutHelp)
 
 		return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
