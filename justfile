@@ -14,6 +14,9 @@ test-watch:
 build:
     go build -o ot .
 
+install:
+    go install .
+
 tag version:
     git tag "v{{version}}"
 

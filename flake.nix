@@ -34,7 +34,7 @@
           pname = "ot";
           version = "0.1.0";
           src = ./.;
-          vendorHash = null; # Will need to be updated after go.sum exists
+          vendorHash = "sha256-uwBJAqN4sIepiiJf9lCDumLqfKJEowQO2tOiSWD3Fig=";
         };
       }
     );
