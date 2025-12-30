@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -159,6 +160,16 @@ type Query struct {
 	NotDone     bool
 	GroupBy     string       // "folder", "filename", or ""
 	DateFilters []DateFilter // date-based filters
+}
+
+type Config struct {
+	DefaultProfile string             `toml:"default_profile"`
+	Profiles       map[string]Profile `toml:"profiles"`
+}
+
+type Profile struct {
+	Vault string `toml:"vault"`
+	Query string `toml:"query"`
 }
 
 // parseQueryFile checks if the query file contains "not done" filter (simple version)
@@ -910,18 +921,189 @@ func filterTasks(allTasks []*Task, query *Query) []*Task {
 	})
 }
 
+func configPath() (string, error) {
+	configDir := os.Getenv("XDG_CONFIG_HOME")
+	if configDir == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		configDir = filepath.Join(homeDir, ".config")
+	}
+	return filepath.Join(configDir, "ot", "config.toml"), nil
+}
+
+func loadConfig() (Config, string, error) {
+	path, err := configPath()
+	if err != nil {
+		return Config{}, "", err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return Config{}, path, nil
+		}
+		return Config{}, path, err
+	}
+	var cfg Config
+	if _, err := toml.Decode(string(data), &cfg); err != nil {
+		return Config{}, path, err
+	}
+	return cfg, path, nil
+}
+
+func expandPath(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return value, nil
+	}
+	expanded := os.ExpandEnv(value)
+	if !strings.HasPrefix(expanded, "~") {
+		return expanded, nil
+	}
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	if expanded == "~" {
+		return homeDir, nil
+	}
+	if strings.HasPrefix(expanded, "~/") {
+		return filepath.Join(homeDir, expanded[2:]), nil
+	}
+	if strings.HasPrefix(expanded, "~\\") {
+		return filepath.Join(homeDir, expanded[2:]), nil
+	}
+	return expanded, nil
+}
+
+func resolveVaultPath(value string) (string, error) {
+	expanded, err := expandPath(value)
+	if err != nil {
+		return "", err
+	}
+	if expanded == "" || filepath.IsAbs(expanded) {
+		return expanded, nil
+	}
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, expanded), nil
+}
+
+func resolveQueryPath(value, vault string) (string, error) {
+	expanded, err := expandPath(value)
+	if err != nil {
+		return "", err
+	}
+	if expanded == "" || filepath.IsAbs(expanded) || vault == "" {
+		return expanded, nil
+	}
+	return filepath.Join(vault, expanded), nil
+}
+
 func main() {
 	// Parse flags
 	vaultPath := flag.String("vault", "", "Path to Obsidian vault")
 	listOnly := flag.Bool("list", false, "List tasks without TUI (non-interactive)")
+	profileName := flag.String("profile", "", "Profile name from config (optional)")
 	flag.Parse()
 
 	args := flag.Args()
-	if len(args) < 1 {
+	cfg, cfgPath, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	var profile *Profile
+	if *profileName != "" {
+		if cfg.Profiles == nil {
+			fmt.Printf("Error: profile %q not found (no profiles in %s)\n", *profileName, cfgPath)
+			os.Exit(1)
+		}
+		p, ok := cfg.Profiles[*profileName]
+		if !ok {
+			fmt.Printf("Error: profile %q not found in %s\n", *profileName, cfgPath)
+			os.Exit(1)
+		}
+		profile = &p
+	} else if cfg.DefaultProfile != "" {
+		p, ok := cfg.Profiles[cfg.DefaultProfile]
+		if !ok {
+			fmt.Printf("Error: default_profile %q not found in %s\n", cfg.DefaultProfile, cfgPath)
+			os.Exit(1)
+		}
+		profile = &p
+	}
+
+	var queryFile string
+	queryFromProfile := false
+	if len(args) > 0 {
+		queryFile = args[0]
+	} else if profile != nil {
+		queryFile = profile.Query
+		queryFromProfile = true
+	}
+
+	var resolvedVault string
+	vaultFromProfile := false
+	if profile != nil {
+		resolvedVault = profile.Vault
+		vaultFromProfile = true
+	}
+	if *vaultPath != "" {
+		resolvedVault = *vaultPath
+		vaultFromProfile = false
+	}
+
+	if resolvedVault != "" {
+		var err error
+		if vaultFromProfile {
+			resolvedVault, err = resolveVaultPath(resolvedVault)
+		} else {
+			resolvedVault, err = expandPath(resolvedVault)
+		}
+		if err != nil {
+			fmt.Printf("Error expanding vault path: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	if queryFile != "" {
+		var err error
+		if queryFromProfile {
+			queryFile, err = resolveQueryPath(queryFile, resolvedVault)
+		} else {
+			queryFile, err = expandPath(queryFile)
+		}
+		if err != nil {
+			fmt.Printf("Error expanding query path: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	if resolvedVault != "" {
+		resolvedVault = filepath.Clean(resolvedVault)
+	}
+	if queryFile != "" {
+		queryFile = filepath.Clean(queryFile)
+	}
+	if resolvedVault != "" {
+		resolved, err := filepath.EvalSymlinks(resolvedVault)
+		if err != nil {
+			fmt.Printf("Error resolving vault path: %v\n", err)
+			os.Exit(1)
+		}
+		resolvedVault = resolved
+	}
+
+	if queryFile == "" || resolvedVault == "" {
 		fmt.Println("Usage: ot <query-file.md> --vault <path>")
 		fmt.Println("\nOptions:")
 		fmt.Println("  --vault <path>  Path to Obsidian vault (required)")
 		fmt.Println("  --list          List tasks without TUI")
+		fmt.Println("  --profile <name>  Use profile from config")
 		fmt.Println("\nSupported query filters:")
 		fmt.Println("  not done              Show only incomplete tasks")
 		fmt.Println("  due today             Tasks due today")
@@ -932,13 +1114,11 @@ func main() {
 		fmt.Println("\nDate values: today, tomorrow, yesterday, or YYYY-MM-DD")
 		fmt.Println("\nExample:")
 		fmt.Println("  ot --vault ~/obsidian-vault query.md")
-		os.Exit(1)
-	}
-
-	queryFile := args[0]
-
-	if *vaultPath == "" {
-		fmt.Println("Error: --vault flag is required")
+		if cfgPath != "" {
+			fmt.Println("\nConfig:")
+			fmt.Printf("  %s\n", cfgPath)
+			fmt.Println("  Define profiles with vault/query and set default_profile to skip flags.")
+		}
 		os.Exit(1)
 	}
 
@@ -950,7 +1130,7 @@ func main() {
 	}
 
 	// Scan vault
-	files, err := scanVault(*vaultPath)
+	files, err := scanVault(resolvedVault)
 	if err != nil {
 		fmt.Printf("Error scanning vault: %v\n", err)
 		os.Exit(1)
@@ -972,7 +1152,7 @@ func main() {
 	totalTasks := 0
 	for _, query := range queries {
 		filtered := filterTasks(allTasks, query)
-		groups := groupTasks(filtered, query.GroupBy, *vaultPath)
+		groups := groupTasks(filtered, query.GroupBy, resolvedVault)
 
 		sections = append(sections, QuerySection{
 			Name:   query.Name,
@@ -1009,7 +1189,7 @@ func main() {
 					if task.Done {
 						checkbox = "[x]"
 					}
-					fmt.Printf("%s %s (%s:%d)\n", checkbox, task.Description, relPath(*vaultPath, task.FilePath), task.LineNumber)
+					fmt.Printf("%s %s (%s:%d)\n", checkbox, task.Description, relPath(resolvedVault, task.FilePath), task.LineNumber)
 				}
 			}
 			fmt.Println()
@@ -1018,7 +1198,7 @@ func main() {
 	}
 
 	// Run TUI
-	p := tea.NewProgram(newModel(sections, *vaultPath, queryFile, queries), tea.WithAltScreen())
+	p := tea.NewProgram(newModel(sections, resolvedVault, queryFile, queries), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running TUI: %v\n", err)
 		os.Exit(1)
