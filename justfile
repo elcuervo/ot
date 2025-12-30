@@ -25,6 +25,9 @@ lint: fmt vet
 demo: build
   ./ot --vault ./examples/vault ./examples/query.md
 
+gif:
+  vhs -p demo.tape
+
 clean:
     rm -f ot coverage.out coverage.html
 
