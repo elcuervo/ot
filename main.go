@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"cmp"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -115,12 +116,15 @@ func parseDueDate(description string) *time.Time {
 // parseFile extracts tasks from a markdown file
 func parseFile(filePath string) ([]*Task, error) {
 	file, err := os.Open(filePath)
+
 	if err != nil {
 		return nil, err
 	}
+
 	defer file.Close()
 
 	var tasks []*Task
+
 	scanner := bufio.NewScanner(file)
 	lineNum := 0
 
@@ -129,6 +133,7 @@ func parseFile(filePath string) ([]*Task, error) {
 		line := scanner.Text()
 
 		matches := taskRe.FindStringSubmatch(line)
+
 		if matches != nil {
 			status := strings.ToLower(matches[1])
 			description := strings.TrimSpace(matches[2])
@@ -173,38 +178,184 @@ type Profile struct {
 	Query string `toml:"query"`
 }
 
+type ResolvedProfile struct {
+	Name      string
+	VaultPath string
+	QueryPath string
+}
+
+type ProfileError struct {
+	Profile string
+	Field   string
+	Err     error
+}
+
+func (e *ProfileError) Error() string {
+	if e.Profile == "" {
+		return fmt.Sprintf("config: %s: %v", e.Field, e.Err)
+	}
+
+	if e.Field == "" {
+		return fmt.Sprintf("profile %q: %v", e.Profile, e.Err)
+	}
+
+	return fmt.Sprintf("profile %q: %s: %v", e.Profile, e.Field, e.Err)
+}
+
+func (e *ProfileError) Unwrap() error {
+	return e.Err
+}
+
+var (
+	ErrEmptyPath    = errors.New("path is empty")
+	ErrPathNotExist = errors.New("path does not exist")
+	ErrNotDirectory = errors.New("path is not a directory")
+)
+
+func validateProfile(name string, p Profile) error {
+	if strings.TrimSpace(p.Vault) == "" {
+		return &ProfileError{Profile: name, Field: "vault", Err: ErrEmptyPath}
+	}
+
+	if strings.TrimSpace(p.Query) == "" {
+		return &ProfileError{Profile: name, Field: "query", Err: ErrEmptyPath}
+	}
+
+	return nil
+}
+
+func validateVaultExists(name, vaultPath string) error {
+	info, err := os.Stat(vaultPath)
+
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &ProfileError{Profile: name, Field: "vault", Err: fmt.Errorf("%w: %s", ErrPathNotExist, vaultPath)}
+		}
+
+		return &ProfileError{Profile: name, Field: "vault", Err: err}
+	}
+
+	if !info.IsDir() {
+		return &ProfileError{Profile: name, Field: "vault", Err: fmt.Errorf("%w: %s", ErrNotDirectory, vaultPath)}
+	}
+
+	return nil
+}
+
+func validateConfig(cfg Config) error {
+	if cfg.DefaultProfile != "" && cfg.Profiles != nil {
+		if _, ok := cfg.Profiles[cfg.DefaultProfile]; !ok {
+			return &ProfileError{Field: "default_profile", Err: fmt.Errorf("profile %q not found", cfg.DefaultProfile)}
+		}
+	}
+
+	return nil
+}
+
+func selectProfile(profileFlag string, cfg Config) (string, *Profile, error) {
+	if profileFlag != "" {
+		if cfg.Profiles == nil {
+			return "", nil, &ProfileError{Profile: profileFlag, Err: errors.New("no profiles defined in config")}
+		}
+
+		p, ok := cfg.Profiles[profileFlag]
+
+		if !ok {
+			return "", nil, &ProfileError{Profile: profileFlag, Err: errors.New("profile not found")}
+		}
+
+		return profileFlag, &p, nil
+	}
+
+	if cfg.DefaultProfile != "" {
+		if cfg.Profiles == nil {
+			return "", nil, &ProfileError{Field: "default_profile", Err: fmt.Errorf("profile %q not found", cfg.DefaultProfile)}
+		}
+
+		p, ok := cfg.Profiles[cfg.DefaultProfile]
+
+		if !ok {
+			return "", nil, &ProfileError{Field: "default_profile", Err: fmt.Errorf("profile %q not found", cfg.DefaultProfile)}
+		}
+
+		return cfg.DefaultProfile, &p, nil
+	}
+
+	return "", nil, nil
+}
+
+func resolveProfilePaths(name string, p Profile) (*ResolvedProfile, error) {
+	if err := validateProfile(name, p); err != nil {
+		return nil, err
+	}
+
+	vaultPath, err := resolveVaultPath(p.Vault)
+
+	if err != nil {
+		return nil, &ProfileError{Profile: name, Field: "vault", Err: err}
+	}
+
+	vaultPath = filepath.Clean(vaultPath)
+	resolved, err := filepath.EvalSymlinks(vaultPath)
+	if err == nil {
+		vaultPath = resolved
+	}
+
+	if err := validateVaultExists(name, vaultPath); err != nil {
+		return nil, err
+	}
+
+	queryPath, err := resolveQueryPath(p.Query, vaultPath)
+
+	if err != nil {
+		return nil, &ProfileError{Profile: name, Field: "query", Err: err}
+	}
+
+	queryPath = filepath.Clean(queryPath)
+
+	return &ResolvedProfile{Name: name, VaultPath: vaultPath, QueryPath: queryPath}, nil
+}
+
 // parseQueryFile checks if the query file contains "not done" filter (simple version)
 func parseQueryFile(filePath string) (bool, error) {
 	queries, err := parseAllQueryBlocks(filePath)
+
 	if err != nil {
 		return false, err
 	}
+
 	if len(queries) == 0 {
 		return false, nil
 	}
+
 	return queries[0].NotDone, nil
 }
 
 // parseQueryFileExtended parses the first query block (for backwards compatibility)
 func parseQueryFileExtended(filePath string) (*Query, error) {
 	queries, err := parseAllQueryBlocks(filePath)
+
 	if err != nil {
 		return nil, err
 	}
+
 	if len(queries) == 0 {
 		return nil, fmt.Errorf("no ```tasks block found in %s", filePath)
 	}
+
 	return queries[0], nil
 }
 
 // parseAllQueryBlocks parses all ```tasks blocks from a file
 func parseAllQueryBlocks(filePath string) ([]*Query, error) {
 	content, err := os.ReadFile(filePath)
+
 	if err != nil {
 		return nil, err
 	}
 
 	matches := blockRe.FindAllStringSubmatchIndex(string(content), -1)
+
 	if matches == nil {
 		return nil, fmt.Errorf("no ```tasks block found in %s", filePath)
 	}
@@ -219,6 +370,7 @@ func parseAllQueryBlocks(filePath string) ([]*Query, error) {
 
 		// Find the nearest ## header before this block
 		sectionName := ""
+
 		for _, header := range headers {
 			headerEnd := header[1]
 			if headerEnd < blockStart {
@@ -246,6 +398,7 @@ func parseQueryContent(queryContent string) *Query {
 
 	// Parse date filters
 	dateMatches := dateFilterRe.FindAllStringSubmatch(queryContent, -1)
+
 	for _, dm := range dateMatches {
 		field := dm[1]   // due, scheduled, done
 		operand := dm[2] // today, tomorrow, before X, after X, on X
@@ -309,6 +462,7 @@ func relPath(basePath, filePath string) string {
 // keeping cursorLineIdx visible and roughly centered.
 func calculateVisibleRange(cursorLineIdx int, lineHeights []int, visibleHeight int) (startLine, endLine int) {
 	totalLines := len(lineHeights)
+
 	if totalLines == 0 {
 		return 0, 0
 	}
@@ -316,6 +470,7 @@ func calculateVisibleRange(cursorLineIdx int, lineHeights []int, visibleHeight i
 	// Calculate total height and cursor position in rendered lines
 	totalHeight := 0
 	cursorPos := 0
+
 	for i, h := range lineHeights {
 		if i < cursorLineIdx {
 			cursorPos += h
@@ -330,12 +485,14 @@ func calculateVisibleRange(cursorLineIdx int, lineHeights []int, visibleHeight i
 
 	// Target: center cursor in visible area
 	targetStart := cursorPos - visibleHeight/2
+
 	if targetStart < 0 {
 		targetStart = 0
 	}
 
 	// Find startLine from target position
 	pos := 0
+
 	for i, h := range lineHeights {
 		if pos >= targetStart {
 			startLine = i
@@ -346,10 +503,12 @@ func calculateVisibleRange(cursorLineIdx int, lineHeights []int, visibleHeight i
 
 	// Find endLine that fits in visibleHeight
 	rendered := 0
+
 	for i := startLine; i < totalLines; i++ {
 		if rendered+lineHeights[i] > visibleHeight {
 			break
 		}
+
 		rendered += lineHeights[i]
 		endLine = i + 1
 	}
@@ -359,11 +518,13 @@ func calculateVisibleRange(cursorLineIdx int, lineHeights []int, visibleHeight i
 		endLine = cursorLineIdx + 1
 		// Recalculate startLine from end
 		rendered = 0
+
 		for i := endLine - 1; i >= 0; i-- {
 			if rendered+lineHeights[i] > visibleHeight {
 				startLine = i + 1
 				break
 			}
+
 			rendered += lineHeights[i]
 			startLine = i
 		}
@@ -371,9 +532,11 @@ func calculateVisibleRange(cursorLineIdx int, lineHeights []int, visibleHeight i
 
 	// Don't leave empty space at bottom
 	rendered = 0
+
 	for i := startLine; i < totalLines; i++ {
 		rendered += lineHeights[i]
 	}
+
 	for startLine > 0 && rendered < visibleHeight {
 		startLine--
 		rendered += lineHeights[startLine]
@@ -382,6 +545,7 @@ func calculateVisibleRange(cursorLineIdx int, lineHeights []int, visibleHeight i
 	// Final endLine calculation
 	rendered = 0
 	endLine = startLine
+
 	for i := startLine; i < totalLines; i++ {
 		if rendered+lineHeights[i] > visibleHeight {
 			break
@@ -420,9 +584,12 @@ func resolveDate(dateStr string) time.Time {
 
 func splitOrDates(value string) []string {
 	parts := strings.Split(value, " or ")
+
 	var dates []string
+
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
+
 		if part != "" {
 			dates = append(dates, part)
 		}
@@ -453,6 +620,7 @@ func matchDateFilter(task *Task, filter DateFilter) bool {
 	if len(filter.Dates) > 0 {
 		for _, date := range filter.Dates {
 			target := resolveDate(date)
+
 			switch filter.Operator {
 			case "on":
 				if taskDateOnly.Equal(target) {
@@ -468,6 +636,7 @@ func matchDateFilter(task *Task, filter DateFilter) bool {
 				}
 			}
 		}
+
 		return false
 	}
 
@@ -490,6 +659,7 @@ func matchAllDateFilters(task *Task, filters []DateFilter) bool {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -511,6 +681,7 @@ func (m *OrderedMap[K, V]) Set(key K, value V) {
 	if _, exists := m.data[key]; !exists {
 		m.order = append(m.order, key)
 	}
+
 	m.data[key] = value
 }
 
@@ -560,6 +731,7 @@ func groupTasks(tasks []*Task, groupBy string, vaultPath string) []TaskGroup {
 	}
 
 	result := make([]TaskGroup, 0, len(groups.Keys()))
+
 	for _, name := range groups.Keys() {
 		tasks, _ := groups.Get(name)
 		result = append(result, TaskGroup{
@@ -575,6 +747,7 @@ func groupTasks(tasks []*Task, groupBy string, vaultPath string) []TaskGroup {
 func saveTask(task *Task) error {
 	// Read the entire file
 	content, err := os.ReadFile(task.FilePath)
+
 	if err != nil {
 		return err
 	}
@@ -589,6 +762,7 @@ func saveTask(task *Task) error {
 	// Write back atomically
 	tempPath := task.FilePath + ".tmp"
 	err = os.WriteFile(tempPath, []byte(strings.Join(lines, "\n")), 0644)
+
 	if err != nil {
 		return err
 	}
@@ -652,10 +826,12 @@ func (m *model) refresh() {
 		m.err = err
 		return
 	}
+
 	m.queries = queries
 
 	// Re-scan vault
 	files, err := scanVault(m.vaultPath)
+
 	if err != nil {
 		m.err = err
 		return
@@ -663,16 +839,19 @@ func (m *model) refresh() {
 
 	// Re-parse all files for tasks
 	var allTasks []*Task
+
 	for _, file := range files {
 		tasks, err := parseFile(file)
 		if err != nil {
 			continue
 		}
+
 		allTasks = append(allTasks, tasks...)
 	}
 
 	// Rebuild sections
 	var sections []QuerySection
+
 	for _, query := range m.queries {
 		filtered := filterTasks(allTasks, query)
 		groups := groupTasks(filtered, query.GroupBy, m.vaultPath)
@@ -812,7 +991,8 @@ func (m model) View() string {
 	// Title
 	titlePrefix := titleStyle.Render("ot - Tasks from ")
 	titleName := titleNameStyle.Render(m.titleName)
-	b.WriteString(titlePrefix + titleName + "\n")
+
+	b.WriteString(titlePrefix + titleName + "\n\n")
 
 	// Task list
 	if len(m.tasks) == 0 {
@@ -838,10 +1018,12 @@ func (m model) View() string {
 					content:   fileStyle.Render("  (no matching tasks)"),
 					taskIndex: -1,
 				})
+
 				continue
 			}
 
 			firstGroup := true
+
 			for _, group := range section.Groups {
 				// Show group header if grouping is active
 				if section.Query.GroupBy != "" && group.Name != "" {
@@ -851,33 +1033,40 @@ func (m model) View() string {
 							taskIndex: -1,
 						})
 					}
+
 					count := len(group.Tasks)
 					countText := countStyle.Render(fmt.Sprintf(" (%d)", count))
 					lines = append(lines, viewLine{
 						content:   groupStyle.Render(fmt.Sprintf("  ## %s", group.Name)) + countText,
 						taskIndex: -1,
 					})
+
 					firstGroup = false
 				}
 
 				for _, task := range group.Tasks {
 					indent := ""
+
 					if section.Query.GroupBy != "" && group.Name != "" {
 						indent = "  "
 					}
+
 					cursor := "  "
+
 					if m.cursor == taskIndex {
 						cursor = cursorStyle.Render("> ")
 					}
 
 					// Build checkbox
 					checkbox := "[ ]"
+
 					if task.Done {
 						checkbox = "[x]"
 					}
 
 					// Get relative path for display (only show if not grouping by filename)
 					fileInfo := ""
+
 					if section.Query.GroupBy != "filename" {
 						fileInfo = fileStyle.Render(fmt.Sprintf(" (%s:%d)", relPath(m.vaultPath, task.FilePath), task.LineNumber))
 					} else {
@@ -886,6 +1075,7 @@ func (m model) View() string {
 
 					// Format line
 					var line string
+
 					if task.Done {
 						line = doneStyle.Render(fmt.Sprintf("%s %s", checkbox, task.Description))
 					} else {
@@ -901,6 +1091,7 @@ func (m model) View() string {
 						content:   fmt.Sprintf("%s%s%s%s", indent, cursor, line, fileInfo),
 						taskIndex: taskIndex,
 					})
+
 					taskIndex++
 				}
 			}
@@ -908,6 +1099,7 @@ func (m model) View() string {
 
 		// Calculate visible window height
 		visibleHeight := m.windowHeight - reservedUILines
+
 		if visibleHeight < minVisibleHeight {
 			visibleHeight = minVisibleHeight
 		}
@@ -915,6 +1107,7 @@ func (m model) View() string {
 		// Build line heights (accounting for lipgloss margins which add newlines)
 		lineHeights := make([]int, len(lines))
 		totalRenderedLines := 0
+
 		for i, line := range lines {
 			height := 1 + strings.Count(line.content, "\n")
 			lineHeights[i] = height
@@ -923,6 +1116,7 @@ func (m model) View() string {
 
 		// Find which line contains the cursor
 		cursorLineIdx := 0
+
 		for i, line := range lines {
 			if line.taskIndex == m.cursor {
 				cursorLineIdx = i
@@ -940,6 +1134,7 @@ func (m model) View() string {
 
 		// Build help line with scroll indicator on the right
 		helpText := "↑/k up • ↓/j down • space/enter toggle • r refresh • q quit"
+
 		if totalRenderedLines > visibleHeight {
 			scrollInfo := fmt.Sprintf("[%d-%d of %d]", startLine+1, endLine, len(lines))
 			// Calculate padding to right-align scroll info
@@ -1000,71 +1195,94 @@ func configPath() (string, error) {
 
 func loadConfig() (Config, string, error) {
 	path, err := configPath()
+
 	if err != nil {
 		return Config{}, "", err
 	}
+
 	data, err := os.ReadFile(path)
+
 	if err != nil {
 		if os.IsNotExist(err) {
 			return Config{}, path, nil
 		}
+
 		return Config{}, path, err
 	}
+
 	var cfg Config
+
 	if _, err := toml.Decode(string(data), &cfg); err != nil {
 		return Config{}, path, err
 	}
+
 	return cfg, path, nil
 }
 
 func expandPath(value string) (string, error) {
 	value = strings.TrimSpace(value)
+
 	if value == "" {
 		return value, nil
 	}
+
 	expanded := os.ExpandEnv(value)
+
 	if !strings.HasPrefix(expanded, "~") {
 		return expanded, nil
 	}
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
+
 	if expanded == "~" {
 		return homeDir, nil
 	}
+
 	if strings.HasPrefix(expanded, "~/") {
 		return filepath.Join(homeDir, expanded[2:]), nil
 	}
+
 	if strings.HasPrefix(expanded, "~\\") {
 		return filepath.Join(homeDir, expanded[2:]), nil
 	}
+
 	return expanded, nil
 }
 
 func resolveVaultPath(value string) (string, error) {
 	expanded, err := expandPath(value)
+
 	if err != nil {
 		return "", err
 	}
+
 	if expanded == "" || filepath.IsAbs(expanded) {
 		return expanded, nil
 	}
+
 	homeDir, err := os.UserHomeDir()
+
 	if err != nil {
 		return "", err
 	}
+
 	return filepath.Join(homeDir, expanded), nil
 }
 
 func resolveQueryPath(value, vault string) (string, error) {
 	expanded, err := expandPath(value)
+
 	if err != nil {
 		return "", err
 	}
+
 	if expanded == "" || filepath.IsAbs(expanded) || vault == "" {
 		return expanded, nil
 	}
+
 	return filepath.Join(vault, expanded), nil
 }
 
@@ -1073,94 +1291,71 @@ func main() {
 	vaultPath := flag.String("vault", "", "Path to Obsidian vault")
 	listOnly := flag.Bool("list", false, "List tasks without TUI (non-interactive)")
 	profileName := flag.String("profile", "", "Profile name from config (optional)")
+
 	flag.Parse()
 
 	args := flag.Args()
 	cfg, cfgPath, err := loadConfig()
+
 	if err != nil {
 		fmt.Printf("Error loading config: %v\n", err)
 		os.Exit(1)
 	}
 
-	var profile *Profile
-	if *profileName != "" {
-		if cfg.Profiles == nil {
-			fmt.Printf("Error: profile %q not found (no profiles in %s)\n", *profileName, cfgPath)
-			os.Exit(1)
-		}
-		p, ok := cfg.Profiles[*profileName]
-		if !ok {
-			fmt.Printf("Error: profile %q not found in %s\n", *profileName, cfgPath)
-			os.Exit(1)
-		}
-		profile = &p
-	} else if cfg.DefaultProfile != "" {
-		p, ok := cfg.Profiles[cfg.DefaultProfile]
-		if !ok {
-			fmt.Printf("Error: default_profile %q not found in %s\n", cfg.DefaultProfile, cfgPath)
-			os.Exit(1)
-		}
-		profile = &p
+	var resolvedVault, queryFile, titleName string
+
+	// Try profile-based resolution
+	name, profile, err := selectProfile(*profileName, cfg)
+
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
 	}
 
-	var queryFile string
-	queryFromProfile := false
-	if len(args) > 0 {
-		queryFile = args[0]
-	} else if profile != nil {
-		queryFile = profile.Query
-		queryFromProfile = true
-	}
-
-	var resolvedVault string
-	vaultFromProfile := false
 	if profile != nil {
-		resolvedVault = profile.Vault
-		vaultFromProfile = true
-	}
-	if *vaultPath != "" {
-		resolvedVault = *vaultPath
-		vaultFromProfile = false
+		resolved, err := resolveProfilePaths(name, *profile)
+
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		resolvedVault = resolved.VaultPath
+		queryFile = resolved.QueryPath
+		titleName = name
 	}
 
-	if resolvedVault != "" {
-		var err error
-		if vaultFromProfile {
-			resolvedVault, err = resolveVaultPath(resolvedVault)
-		} else {
-			resolvedVault, err = expandPath(resolvedVault)
-		}
+	// CLI overrides
+	if *vaultPath != "" {
+		expanded, err := expandPath(*vaultPath)
+
 		if err != nil {
 			fmt.Printf("Error expanding vault path: %v\n", err)
 			os.Exit(1)
 		}
-	}
-	if queryFile != "" {
-		var err error
-		if queryFromProfile {
-			queryFile, err = resolveQueryPath(queryFile, resolvedVault)
-		} else {
-			queryFile, err = expandPath(queryFile)
+
+		resolvedVault = filepath.Clean(expanded)
+
+		if resolved, err := filepath.EvalSymlinks(resolvedVault); err == nil {
+			resolvedVault = resolved
 		}
+
+		titleName = filepath.Base(resolvedVault)
+	}
+
+	if len(args) > 0 {
+		expanded, err := expandPath(args[0])
+
 		if err != nil {
 			fmt.Printf("Error expanding query path: %v\n", err)
 			os.Exit(1)
 		}
+
+		queryFile = filepath.Clean(expanded)
 	}
 
-	if resolvedVault != "" {
-		resolvedVault = filepath.Clean(resolvedVault)
-	}
-	if queryFile != "" {
-		queryFile = filepath.Clean(queryFile)
-	}
-	if resolvedVault != "" {
-		resolved, err := filepath.EvalSymlinks(resolvedVault)
-		if err != nil {
-			fmt.Printf("Error resolving vault path: %v\n", err)
-			os.Exit(1)
-		}
-		resolvedVault = resolved
+	if titleName == "" && resolvedVault != "" {
+		titleName = filepath.Base(resolvedVault)
 	}
 
 	if queryFile == "" || resolvedVault == "" {
@@ -1180,16 +1375,19 @@ func main() {
 		fmt.Println("\nDate values: today, tomorrow, yesterday, or YYYY-MM-DD")
 		fmt.Println("\nExample:")
 		fmt.Println("  ot --vault ~/obsidian-vault query.md")
+
 		if cfgPath != "" {
 			fmt.Println("\nConfig:")
 			fmt.Printf("  %s\n", cfgPath)
 			fmt.Println("  Define profiles with vault/query and set default_profile to skip flags.")
 		}
+
 		os.Exit(1)
 	}
 
 	// Parse all query blocks from the file
 	queries, err := parseAllQueryBlocks(queryFile)
+
 	if err != nil {
 		fmt.Printf("Error parsing query file: %v\n", err)
 		os.Exit(1)
@@ -1197,6 +1395,7 @@ func main() {
 
 	// Scan vault
 	files, err := scanVault(resolvedVault)
+
 	if err != nil {
 		fmt.Printf("Error scanning vault: %v\n", err)
 		os.Exit(1)
@@ -1215,7 +1414,9 @@ func main() {
 
 	// Process each query block into a section
 	var sections []QuerySection
+
 	totalTasks := 0
+
 	for _, query := range queries {
 		filtered := filterTasks(allTasks, query)
 		groups := groupTasks(filtered, query.GroupBy, resolvedVault)
@@ -1226,21 +1427,13 @@ func main() {
 			Groups: groups,
 			Tasks:  filtered,
 		})
+
 		totalTasks += len(filtered)
 	}
 
 	if totalTasks == 0 {
 		fmt.Println("No tasks found matching any query.")
 		os.Exit(0)
-	}
-
-	titleName := filepath.Base(resolvedVault)
-	if profile != nil {
-		if *profileName != "" {
-			titleName = *profileName
-		} else {
-			titleName = cfg.DefaultProfile
-		}
 	}
 
 	// List mode (non-interactive)
@@ -1250,25 +1443,31 @@ func main() {
 			if section.Name != "" {
 				fmt.Printf("## %s (%d)\n", section.Name, len(section.Tasks))
 			}
+
 			if len(section.Tasks) == 0 {
 				fmt.Println("(no matching tasks)")
 				fmt.Println()
 				continue
 			}
+
 			for _, group := range section.Groups {
 				if section.Query.GroupBy != "" && group.Name != "" {
 					fmt.Printf("### %s\n", group.Name)
 				}
+
 				for _, task := range group.Tasks {
 					checkbox := "[ ]"
+
 					if task.Done {
 						checkbox = "[x]"
 					}
+
 					fmt.Printf("%s %s (%s:%d)\n", checkbox, task.Description, relPath(resolvedVault, task.FilePath), task.LineNumber)
 				}
 			}
 			fmt.Println()
 		}
+
 		os.Exit(0)
 	}
 
