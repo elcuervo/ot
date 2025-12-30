@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -571,6 +572,288 @@ func TestMatchDateFilter(t *testing.T) {
 			got := matchDateFilter(tt.task, tt.filter)
 			if got != tt.want {
 				t.Errorf("matchDateFilter() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExpandPath(t *testing.T) {
+	home, _ := os.UserHomeDir()
+
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{name: "empty string", input: "", want: ""},
+		{name: "absolute path", input: "/usr/bin", want: "/usr/bin"},
+		{name: "tilde only", input: "~", want: home},
+		{name: "tilde with path", input: "~/Documents", want: filepath.Join(home, "Documents")},
+		{name: "whitespace trimmed", input: "  /path  ", want: "/path"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := expandPath(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("expandPath() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("expandPath() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveVaultPath(t *testing.T) {
+	home, _ := os.UserHomeDir()
+
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{name: "absolute path unchanged", input: "/vault", want: "/vault"},
+		{name: "relative becomes absolute", input: "vault", want: filepath.Join(home, "vault")},
+		{name: "tilde path", input: "~/vault", want: filepath.Join(home, "vault")},
+		{name: "empty stays empty", input: "", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveVaultPath(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("resolveVaultPath() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("resolveVaultPath() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveQueryPath(t *testing.T) {
+	home, _ := os.UserHomeDir()
+
+	tests := []struct {
+		name    string
+		query   string
+		vault   string
+		want    string
+		wantErr bool
+	}{
+		{name: "absolute query unchanged", query: "/queries/q.md", vault: "/vault", want: "/queries/q.md"},
+		{name: "relative joins vault", query: "queries/q.md", vault: "/vault", want: "/vault/queries/q.md"},
+		{name: "tilde query expands", query: "~/q.md", vault: "/vault", want: filepath.Join(home, "q.md")},
+		{name: "empty vault uses relative", query: "q.md", vault: "", want: "q.md"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveQueryPath(tt.query, tt.vault)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("resolveQueryPath() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("resolveQueryPath() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateProfile(t *testing.T) {
+	tests := []struct {
+		name     string
+		profile  Profile
+		wantErr  bool
+		errField string
+	}{
+		{name: "valid profile", profile: Profile{Vault: "/v", Query: "q.md"}, wantErr: false},
+		{name: "empty vault", profile: Profile{Vault: "", Query: "q.md"}, wantErr: true, errField: "vault"},
+		{name: "whitespace vault", profile: Profile{Vault: "  ", Query: "q.md"}, wantErr: true, errField: "vault"},
+		{name: "empty query", profile: Profile{Vault: "/v", Query: ""}, wantErr: true, errField: "query"},
+		{name: "both empty", profile: Profile{}, wantErr: true, errField: "vault"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateProfile("test", tt.profile)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateProfile() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errField != "" {
+				var pe *ProfileError
+				if errors.As(err, &pe) && pe.Field != tt.errField {
+					t.Errorf("error field = %q, want %q", pe.Field, tt.errField)
+				}
+			}
+		})
+	}
+}
+
+func TestSelectProfile(t *testing.T) {
+	tests := []struct {
+		name        string
+		profileFlag string
+		cfg         Config
+		wantName    string
+		wantNil     bool
+		wantErr     bool
+	}{
+		{
+			name:        "explicit flag",
+			profileFlag: "work",
+			cfg:         Config{Profiles: map[string]Profile{"work": {Vault: "/v", Query: "q"}}},
+			wantName:    "work",
+		},
+		{
+			name:        "default profile",
+			profileFlag: "",
+			cfg:         Config{DefaultProfile: "home", Profiles: map[string]Profile{"home": {Vault: "/v", Query: "q"}}},
+			wantName:    "home",
+		},
+		{
+			name:        "no profile",
+			profileFlag: "",
+			cfg:         Config{},
+			wantNil:     true,
+		},
+		{
+			name:        "flag profile not found",
+			profileFlag: "missing",
+			cfg:         Config{Profiles: map[string]Profile{"work": {}}},
+			wantErr:     true,
+		},
+		{
+			name:        "default profile not found",
+			profileFlag: "",
+			cfg:         Config{DefaultProfile: "missing", Profiles: map[string]Profile{}},
+			wantErr:     true,
+		},
+		{
+			name:        "flag with no profiles map",
+			profileFlag: "work",
+			cfg:         Config{},
+			wantErr:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name, profile, err := selectProfile(tt.profileFlag, tt.cfg)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("selectProfile() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantNil && profile != nil {
+				t.Errorf("selectProfile() profile = %v, want nil", profile)
+				return
+			}
+			if !tt.wantNil && !tt.wantErr && name != tt.wantName {
+				t.Errorf("selectProfile() name = %q, want %q", name, tt.wantName)
+			}
+		})
+	}
+}
+
+func TestResolveProfilePaths(t *testing.T) {
+	tmpDir := t.TempDir()
+	vaultDir := filepath.Join(tmpDir, "vault")
+	os.MkdirAll(vaultDir, 0755)
+
+	fileAsVault := filepath.Join(tmpDir, "file.txt")
+	os.WriteFile(fileAsVault, []byte("not a dir"), 0644)
+
+	tests := []struct {
+		name     string
+		profile  Profile
+		wantErr  bool
+		errField string
+	}{
+		{
+			name:    "valid profile",
+			profile: Profile{Vault: vaultDir, Query: "tasks.md"},
+			wantErr: false,
+		},
+		{
+			name:     "non-existent vault",
+			profile:  Profile{Vault: filepath.Join(tmpDir, "nonexistent"), Query: "tasks.md"},
+			wantErr:  true,
+			errField: "vault",
+		},
+		{
+			name:     "vault is file",
+			profile:  Profile{Vault: fileAsVault, Query: "tasks.md"},
+			wantErr:  true,
+			errField: "vault",
+		},
+		{
+			name:     "empty vault",
+			profile:  Profile{Vault: "", Query: "tasks.md"},
+			wantErr:  true,
+			errField: "vault",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resolved, err := resolveProfilePaths("test", tt.profile)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("resolveProfilePaths() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errField != "" {
+				var pe *ProfileError
+				if errors.As(err, &pe) && pe.Field != tt.errField {
+					t.Errorf("error field = %q, want %q", pe.Field, tt.errField)
+				}
+			}
+			if !tt.wantErr && resolved == nil {
+				t.Error("resolveProfilePaths() returned nil without error")
+			}
+		})
+	}
+}
+
+func TestValidateConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     Config
+		wantErr bool
+	}{
+		{
+			name:    "valid config",
+			cfg:     Config{DefaultProfile: "work", Profiles: map[string]Profile{"work": {Vault: "/v", Query: "q"}}},
+			wantErr: false,
+		},
+		{
+			name:    "no default profile",
+			cfg:     Config{Profiles: map[string]Profile{"work": {Vault: "/v", Query: "q"}}},
+			wantErr: false,
+		},
+		{
+			name:    "missing default profile",
+			cfg:     Config{DefaultProfile: "missing", Profiles: map[string]Profile{"work": {}}},
+			wantErr: true,
+		},
+		{
+			name:    "empty config",
+			cfg:     Config{},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateConfig(tt.cfg)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateConfig() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
