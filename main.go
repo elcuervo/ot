@@ -988,7 +988,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Navigation mode within search (after pressing Enter)
 			if m.searchNavigating {
 				switch msg.String() {
-				case "esc", "ctrl+[", "/":
+				case "esc", "ctrl+[", "/", "q":
 					// Exit search mode entirely
 					m.searching = false
 					m.searchNavigating = false
@@ -1147,6 +1147,24 @@ var (
 			Bold(true).
 			Foreground(lipgloss.Color("99"))
 
+	searchModeStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("231")).
+			Background(lipgloss.Color("160")).
+			Padding(0, 1)
+
+	resultsModeStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("231")).
+			Background(lipgloss.Color("214")).
+			Padding(0, 1)
+
+	taskModeStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("231")).
+			Background(lipgloss.Color("28")).
+			Padding(0, 1)
+
 	selectedStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("212")).
 			Bold(true)
@@ -1209,8 +1227,21 @@ func (m model) View() string {
 	// Title
 	titlePrefix := titleStyle.Render("ot - Tasks from ")
 	titleName := titleNameStyle.Render(m.titleName)
+	modeLabel := ""
 
-	b.WriteString(titlePrefix + titleName + "\n")
+	if m.searching {
+		if m.searchNavigating {
+			modeLabel = resultsModeStyle.Render("results")
+		} else {
+			modeLabel = searchModeStyle.Render("search")
+		}
+	}
+
+	titleLine := titlePrefix + titleName
+	if modeLabel != "" {
+		titleLine += " " + modeLabel
+	}
+	b.WriteString(titleLine + "\n")
 
 	// Search bar (if in search mode)
 	if m.searching {
