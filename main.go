@@ -797,22 +797,25 @@ type model struct {
 	windowWidth  int // Terminal width
 
 	// Search state
-	searching       bool              // Whether search mode is active
-	searchQuery     string            // Current search input
+	searching        bool             // Whether search mode is active
+	searchQuery      string           // Current search input
 	searchNavigating bool             // Whether navigating results (vs typing)
-	filteredTasks   []*Task           // Tasks matching search query
-	taskToSection   map[*Task]string  // Map task to its section name for search
+	filteredTasks    []*Task          // Tasks matching search query
+	taskToSection    map[*Task]string // Map task to its section name for search
+	taskToGroup      map[*Task]string // Map task to its group name for search
 }
 
 func newModel(sections []QuerySection, vaultPath string, titleName string, queryFile string, queries []*Query) model {
-	// Build flat task list from all sections and task-to-section map
+	// Build flat task list from all sections and task-to-section/group maps
 	var tasks []*Task
 	taskToSection := make(map[*Task]string)
+	taskToGroup := make(map[*Task]string)
 	for _, s := range sections {
 		for _, g := range s.Groups {
 			for _, task := range g.Tasks {
 				tasks = append(tasks, task)
 				taskToSection[task] = s.Name
+				taskToGroup[task] = g.Name
 			}
 		}
 	}
@@ -827,6 +830,7 @@ func newModel(sections []QuerySection, vaultPath string, titleName string, query
 		windowHeight:  defaultWindowHeight,
 		windowWidth:   defaultWindowWidth,
 		taskToSection: taskToSection,
+		taskToGroup:   taskToGroup,
 	}
 }
 
@@ -834,7 +838,7 @@ func (m model) Init() tea.Cmd {
 	return tea.WindowSize()
 }
 
-// filterBySearch filters tasks based on search query (matches task description or section name)
+// filterBySearch filters tasks based on search query (matches task description, section name, or group name)
 func (m *model) filterBySearch() {
 	if m.searchQuery == "" {
 		m.filteredTasks = nil
@@ -861,6 +865,14 @@ func (m *model) filterBySearch() {
 		// Match against section/category name
 		sectionName := m.taskToSection[task]
 		if strings.Contains(strings.ToLower(sectionName), query) {
+			filtered = append(filtered, task)
+			seen[task] = true
+			continue
+		}
+
+		// Match against group name (folder/filename)
+		groupName := m.taskToGroup[task]
+		if strings.Contains(strings.ToLower(groupName), query) {
 			filtered = append(filtered, task)
 			seen[task] = true
 		}
@@ -931,14 +943,16 @@ func (m *model) refresh() {
 		})
 	}
 
-	// Rebuild flat task list and task-to-section map
+	// Rebuild flat task list and task-to-section/group maps
 	var tasks []*Task
 	taskToSection := make(map[*Task]string)
+	taskToGroup := make(map[*Task]string)
 	for _, s := range sections {
 		for _, g := range s.Groups {
 			for _, task := range g.Tasks {
 				tasks = append(tasks, task)
 				taskToSection[task] = s.Name
+				taskToGroup[task] = g.Name
 			}
 		}
 	}
@@ -946,6 +960,7 @@ func (m *model) refresh() {
 	m.sections = sections
 	m.tasks = tasks
 	m.taskToSection = taskToSection
+	m.taskToGroup = taskToGroup
 
 	// Re-apply search filter if active
 	if m.searching && m.searchQuery != "" {
@@ -973,7 +988,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Navigation mode within search (after pressing Enter)
 			if m.searchNavigating {
 				switch msg.String() {
-				case "esc", "/":
+				case "esc", "ctrl+[", "/":
 					// Exit search mode entirely
 					m.searching = false
 					m.searchNavigating = false
@@ -1021,7 +1036,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Typing mode - all keys are input except special ones
 			switch msg.String() {
-			case "esc":
+			case "esc", "ctrl+[":
 				// Exit search mode
 				m.searching = false
 				m.searchQuery = ""
@@ -1167,6 +1182,10 @@ var searchStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color("212")).
 	Bold(true)
 
+var matchStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color("214")).
+	Bold(true)
+
 var searchInputStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color("170"))
 
@@ -1221,6 +1240,8 @@ func (m model) View() string {
 		} else {
 			var lines []viewLine
 
+			query := strings.ToLower(m.searchQuery)
+
 			for i, task := range tasks {
 				cursor := "  "
 				if m.cursor == i {
@@ -1232,10 +1253,26 @@ func (m model) View() string {
 					checkbox = "[x]"
 				}
 
-				// Show section name and file info for context
+				// Determine what matched for visual feedback
 				sectionName := m.taskToSection[task]
+				groupName := m.taskToGroup[task]
+				descLower := strings.ToLower(task.Description)
+
+				var matchInfo string
+				if strings.Contains(descLower, query) {
+					// Matched description - no extra indicator needed
+					matchInfo = ""
+				} else if strings.Contains(strings.ToLower(sectionName), query) {
+					// Matched section name
+					matchInfo = matchStyle.Render(fmt.Sprintf("→%s ", sectionName))
+				} else if strings.Contains(strings.ToLower(groupName), query) {
+					// Matched group name
+					matchInfo = matchStyle.Render(fmt.Sprintf("→%s ", groupName))
+				}
+
+				// Show section context
 				sectionInfo := ""
-				if sectionName != "" {
+				if sectionName != "" && matchInfo == "" {
 					sectionInfo = countStyle.Render(fmt.Sprintf("[%s] ", sectionName))
 				}
 				fileInfo := fileStyle.Render(fmt.Sprintf(" (%s:%d)", relPath(m.vaultPath, task.FilePath), task.LineNumber))
@@ -1252,7 +1289,7 @@ func (m model) View() string {
 				}
 
 				lines = append(lines, viewLine{
-					content:   fmt.Sprintf("%s%s%s%s", cursor, sectionInfo, line, fileInfo),
+					content:   fmt.Sprintf("%s%s%s%s%s", cursor, matchInfo, sectionInfo, line, fileInfo),
 					taskIndex: i,
 				})
 			}
