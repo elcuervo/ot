@@ -80,22 +80,22 @@ If `default_profile` is set, you can run `ot` without arguments.
 
 The query file uses Obsidian Tasks syntax:
 
-```markdown
+<pre>
 ## Due Today
 
-\`\`\`tasks
+```tasks
 not done
 due today
-\`\`\`
+```
 
 ## Upcoming
 
-\`\`\`tasks
+```tasks
 not done
 due after today
 group by folder
-\`\`\`
 ```
+</pre>
 
 Supported filters:
 - `not done` - incomplete tasks only
