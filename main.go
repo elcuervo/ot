@@ -20,7 +20,7 @@ import (
 const (
 	defaultWindowHeight = 24
 	defaultWindowWidth  = 80
-	reservedUILines     = 4 // title(1) + newline(1) + help margin(1) + help(1)
+	reservedUILines     = 5 // title(1) + padding(1) + newline(1) + help margin(1) + help(1)
 	minVisibleHeight    = 3
 )
 
