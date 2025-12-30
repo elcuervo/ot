@@ -2,7 +2,7 @@
 
 CLI tool to interact with [Obsidian Tasks](https://publish.obsidian.md/tasks/Introduction)
 
-![VHS](https://vhs.charm.sh/vhs-1JW2nYb2gJGLEBhKfLI05b.gif)
+![VHS](https://vhs.charm.sh/vhs-2i4t7KMMFL2z6nXdZ679ND.gif)
 
 ## Install
 
@@ -30,6 +30,32 @@ Or install directly from GitHub:
 nix profile install github:elcuervo/ot
 ```
 
+## Usage
+
+```bash
+ot --vault ~/obsidian-vault query.md
+ot --profile work
+ot --version
+```
+
+## Keybindings
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` or arrows | Navigate up/down |
+| `g` / `G` | Jump to top/bottom |
+| `space` / `enter` | Toggle task |
+| `/` | Search tasks |
+| `r` | Refresh |
+| `q` | Quit |
+
+### Search
+
+Press `/` to search. Matches against:
+- Task description
+- Section name (e.g., "Due Today", "Upcoming")
+- Group name (folder or filename when grouped)
+
 ## Config
 
 Create `~/.config/ot/config.toml` (or `$XDG_CONFIG_HOME/ot/config.toml`) with profiles and a default:
@@ -49,3 +75,30 @@ ot --profile work
 ```
 
 If `default_profile` is set, you can run `ot` without arguments.
+
+## Query File
+
+The query file uses Obsidian Tasks syntax:
+
+```markdown
+## Due Today
+
+\`\`\`tasks
+not done
+due today
+\`\`\`
+
+## Upcoming
+
+\`\`\`tasks
+not done
+due after today
+group by folder
+\`\`\`
+```
+
+Supported filters:
+- `not done` - incomplete tasks only
+- `due today`, `due tomorrow`, `due yesterday`
+- `due before <date>`, `due after <date>`
+- `group by folder`, `group by filename`
