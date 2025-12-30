@@ -10,7 +10,7 @@ Set Height 800
 Set Padding 20
 
 # Start the app with vault and query file
-Type "./ot --vault ./examples/vault ./examples/query.md"
+Type "ot --vault ./examples/vault ./examples/query.md"
 Sleep 500ms
 Enter
 Sleep 1.5s
@@ -87,14 +87,16 @@ Sleep 700ms
 Escape
 Sleep 600ms
 
-# === SEARCH AGAIN ===
-# Search for tasks by category
+# === SEARCH BY CATEGORY ===
+# Search for tasks by section name (shows →Upcoming indicator)
 Type "/"
 Sleep 400ms
-Type "groceries"
-Sleep 600ms
+Type "work"
+Sleep 800ms
 Enter
-Sleep 500ms
+Sleep 600ms
+Down
+Sleep 400ms
 Space
 Sleep 700ms
 Escape
