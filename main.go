@@ -32,7 +32,7 @@ var (
 	headerRe        = regexp.MustCompile(`(?m)^##\s+(.+)$`)
 	groupByFuncRe   = regexp.MustCompile(`group by function task\.file\.(\w+)`)
 	groupBySimpleRe = regexp.MustCompile(`group by (\w+)`)
-	dateFilterRe    = regexp.MustCompile(`(due|scheduled|done)\s+(today|tomorrow|before\s+\S+|after\s+\S+|on\s+\S+)`)
+	dateFilterRe    = regexp.MustCompile(`(due|scheduled|done)\s+((?:today|tomorrow|yesterday)(?:\s+or\s+(?:today|tomorrow|yesterday))*|before\s+\S+|after\s+\S+|on\s+\S+(?:\s+or\s+\S+)*)`)
 )
 
 // Task represents a single task from a markdown file
@@ -152,6 +152,7 @@ type DateFilter struct {
 	Field    string // "due", "scheduled", "done"
 	Operator string // "today", "before", "after", "on"
 	Date     string // "today", "tomorrow", or YYYY-MM-DD
+	Dates    []string
 }
 
 // Query represents parsed query options
@@ -250,21 +251,32 @@ func parseQueryContent(queryContent string) *Query {
 		operand := dm[2] // today, tomorrow, before X, after X, on X
 
 		var op, date string
-		if operand == "today" || operand == "tomorrow" {
+		var dates []string
+		switch {
+		case strings.HasPrefix(operand, "before "):
+			op = "before"
+			date = strings.TrimSpace(strings.TrimPrefix(operand, "before "))
+		case strings.HasPrefix(operand, "after "):
+			op = "after"
+			date = strings.TrimSpace(strings.TrimPrefix(operand, "after "))
+		case strings.HasPrefix(operand, "on "):
 			op = "on"
-			date = operand
-		} else {
-			parts := strings.SplitN(operand, " ", 2)
-			op = parts[0]
-			if len(parts) > 1 {
-				date = parts[1]
-			}
+			dates = splitOrDates(strings.TrimSpace(strings.TrimPrefix(operand, "on ")))
+		default:
+			op = "on"
+			dates = splitOrDates(operand)
+		}
+
+		if len(dates) == 1 {
+			date = dates[0]
+			dates = nil
 		}
 
 		query.DateFilters = append(query.DateFilters, DateFilter{
 			Field:    field,
 			Operator: op,
 			Date:     date,
+			Dates:    dates,
 		})
 	}
 
@@ -406,6 +418,18 @@ func resolveDate(dateStr string) time.Time {
 	}
 }
 
+func splitOrDates(value string) []string {
+	parts := strings.Split(value, " or ")
+	var dates []string
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			dates = append(dates, part)
+		}
+	}
+	return dates
+}
+
 // matchDateFilter checks if a task matches a date filter
 func matchDateFilter(task *Task, filter DateFilter) bool {
 	var taskDate *time.Time
@@ -425,6 +449,27 @@ func matchDateFilter(task *Task, filter DateFilter) bool {
 
 	targetDate := resolveDate(filter.Date)
 	taskDateOnly := startOfDay(*taskDate)
+
+	if len(filter.Dates) > 0 {
+		for _, date := range filter.Dates {
+			target := resolveDate(date)
+			switch filter.Operator {
+			case "on":
+				if taskDateOnly.Equal(target) {
+					return true
+				}
+			case "before":
+				if taskDateOnly.Before(target) {
+					return true
+				}
+			case "after":
+				if taskDateOnly.After(target) {
+					return true
+				}
+			}
+		}
+		return false
+	}
 
 	switch filter.Operator {
 	case "on":
@@ -1107,6 +1152,7 @@ func main() {
 		fmt.Println("\nSupported query filters:")
 		fmt.Println("  not done              Show only incomplete tasks")
 		fmt.Println("  due today             Tasks due today")
+		fmt.Println("  due today or tomorrow Tasks due today or tomorrow")
 		fmt.Println("  due before <date>     Tasks due before date")
 		fmt.Println("  due after <date>      Tasks due after date")
 		fmt.Println("  group by folder       Group tasks by folder")
