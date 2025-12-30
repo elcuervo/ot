@@ -1,0 +1,90 @@
+name: build-release
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos:
+          - linux
+          - darwin
+          - windows
+        goarch:
+          - amd64
+          - arm64
+        exclude:
+          - goos: windows
+            goarch: arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          goos="${{ matrix.goos }}"
+          goarch="${{ matrix.goarch }}"
+          pkg="ot_${goos}_${goarch}"
+
+          binary="ot"
+          if [ "$goos" = "windows" ]; then
+            binary="ot.exe"
+          fi
+
+          CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
+            go build -trimpath -ldflags "-s -w" -o "dist/${binary}" .
+
+          if [ "$goos" = "windows" ]; then
+            zip -j "dist/${pkg}.zip" "dist/${binary}"
+          else
+            tar -czf "dist/${pkg}.tar.gz" -C dist "${binary}"
+          fi
+
+          rm -f "dist/${binary}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ot_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: dist/*
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum * > checksums.txt
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

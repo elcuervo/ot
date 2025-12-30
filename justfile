@@ -14,6 +14,13 @@ test-watch:
 build:
     go build -o ot .
 
+tag version:
+    git tag "v{{version}}"
+
+release version:
+    git tag "v{{version}}"
+    git push origin "v{{version}}"
+
 fmt:
     go fmt ./...
 
