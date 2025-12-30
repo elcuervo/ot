@@ -828,7 +828,7 @@ func (m model) View() string {
 				count := len(section.Tasks)
 				countText := countStyle.Render(fmt.Sprintf(" (%d)", count))
 				lines = append(lines, viewLine{
-					content:   sectionStyle.Render(fmt.Sprintf("## %s", section.Name)) + countText,
+					content:   sectionStyle.Render(fmt.Sprintf("# %s", section.Name)) + countText,
 					taskIndex: -1,
 				})
 			}
@@ -841,10 +841,11 @@ func (m model) View() string {
 				continue
 			}
 
+			firstGroup := true
 			for _, group := range section.Groups {
 				// Show group header if grouping is active
 				if section.Query.GroupBy != "" && group.Name != "" {
-					if len(lines) > 0 {
+					if !firstGroup {
 						lines = append(lines, viewLine{
 							content:   "",
 							taskIndex: -1,
@@ -853,9 +854,10 @@ func (m model) View() string {
 					count := len(group.Tasks)
 					countText := countStyle.Render(fmt.Sprintf(" (%d)", count))
 					lines = append(lines, viewLine{
-						content:   groupStyle.Render(fmt.Sprintf("  ### %s", group.Name)) + countText,
+						content:   groupStyle.Render(fmt.Sprintf("  ## %s", group.Name)) + countText,
 						taskIndex: -1,
 					})
+					firstGroup = false
 				}
 
 				for _, task := range group.Tasks {
