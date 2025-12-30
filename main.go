@@ -610,6 +610,7 @@ type model struct {
 	tasks        []*Task // Flat list of all tasks for navigation
 	cursor       int
 	vaultPath    string
+	titleName    string
 	queryFile    string   // Path to query file for refresh
 	queries      []*Query // Parsed queries for refresh
 	quitting     bool
@@ -618,7 +619,7 @@ type model struct {
 	windowWidth  int // Terminal width
 }
 
-func newModel(sections []QuerySection, vaultPath string, queryFile string, queries []*Query) model {
+func newModel(sections []QuerySection, vaultPath string, titleName string, queryFile string, queries []*Query) model {
 	// Build flat task list from all sections
 	var tasks []*Task
 	for _, s := range sections {
@@ -631,6 +632,7 @@ func newModel(sections []QuerySection, vaultPath string, queryFile string, queri
 		sections:     sections,
 		tasks:        tasks,
 		vaultPath:    vaultPath,
+		titleName:    titleName,
 		queryFile:    queryFile,
 		queries:      queries,
 		windowHeight: defaultWindowHeight,
@@ -755,6 +757,10 @@ var (
 			Bold(true).
 			Foreground(lipgloss.Color("170"))
 
+	titleNameStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("99"))
+
 	selectedStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("212")).
 			Bold(true)
@@ -805,8 +811,9 @@ func (m model) View() string {
 	var b strings.Builder
 
 	// Title
-	title := titleStyle.Render(fmt.Sprintf("ot - Tasks from %s", m.vaultPath))
-	b.WriteString(title + "\n")
+	titlePrefix := titleStyle.Render("ot - Tasks from ")
+	titleName := titleNameStyle.Render(m.titleName)
+	b.WriteString(titlePrefix + titleName + "\n")
 
 	// Task list
 	if len(m.tasks) == 0 {
@@ -1214,6 +1221,15 @@ func main() {
 		os.Exit(0)
 	}
 
+	titleName := filepath.Base(resolvedVault)
+	if profile != nil {
+		if *profileName != "" {
+			titleName = *profileName
+		} else {
+			titleName = cfg.DefaultProfile
+		}
+	}
+
 	// List mode (non-interactive)
 	if *listOnly {
 		fmt.Printf("Found %d task(s):\n\n", totalTasks)
@@ -1244,7 +1260,7 @@ func main() {
 	}
 
 	// Run TUI
-	p := tea.NewProgram(newModel(sections, resolvedVault, queryFile, queries), tea.WithAltScreen())
+	p := tea.NewProgram(newModel(sections, resolvedVault, titleName, queryFile, queries), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running TUI: %v\n", err)
 		os.Exit(1)
