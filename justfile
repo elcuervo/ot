@@ -17,6 +17,10 @@ build:
 install:
     go install .
 
+nix-install:
+    nix profile remove ot 2>/dev/null || true
+    nix profile install .# --refresh
+
 tag version:
     git tag "v{{version}}"
 
