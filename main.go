@@ -781,8 +781,7 @@ var (
 
 	groupStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("99")).
-			MarginTop(1)
+			Foreground(lipgloss.Color("99"))
 )
 
 var sectionStyle = lipgloss.NewStyle().
@@ -845,13 +844,25 @@ func (m model) View() string {
 			for _, group := range section.Groups {
 				// Show group header if grouping is active
 				if section.Query.GroupBy != "" && group.Name != "" {
+					if len(lines) > 0 {
+						lines = append(lines, viewLine{
+							content:   "",
+							taskIndex: -1,
+						})
+					}
+					count := len(group.Tasks)
+					countText := countStyle.Render(fmt.Sprintf(" (%d)", count))
 					lines = append(lines, viewLine{
-						content:   groupStyle.Render(fmt.Sprintf("  ### %s", group.Name)),
+						content:   groupStyle.Render(fmt.Sprintf("  ### %s", group.Name)) + countText,
 						taskIndex: -1,
 					})
 				}
 
 				for _, task := range group.Tasks {
+					indent := ""
+					if section.Query.GroupBy != "" && group.Name != "" {
+						indent = "  "
+					}
 					cursor := "  "
 					if m.cursor == taskIndex {
 						cursor = cursorStyle.Render("> ")
@@ -885,7 +896,7 @@ func (m model) View() string {
 					}
 
 					lines = append(lines, viewLine{
-						content:   fmt.Sprintf("%s%s%s", cursor, line, fileInfo),
+						content:   fmt.Sprintf("%s%s%s%s", indent, cursor, line, fileInfo),
 						taskIndex: taskIndex,
 					})
 					taskIndex++
