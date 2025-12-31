@@ -72,4 +72,16 @@ var (
 
 	searchInputStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("170"))
+
+	confirmStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("46"))
+
+	cancelStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("196"))
+
+	dangerStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("196"))
 )

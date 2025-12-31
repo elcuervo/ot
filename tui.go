@@ -299,7 +299,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.refresh()
 				return m, nil
 
-			case "n", "N", "esc", "ctrl+[":
+			case "n", "N", "q", "esc", "ctrl+[":
 				m.deleting = false
 				m.deletingTask = nil
 				return m, nil
@@ -579,10 +579,10 @@ func (m model) View() string {
 	}
 
 	if m.deleting && m.deletingTask != nil {
-		titleLine := aboutStyle.Render("Delete Task")
+		titleLine := dangerStyle.Render("⚠ Delete Task")
 
 		taskPreview := renderTask(m.deletingTask.Done, m.deletingTask.Description)
-		questionLine := "Are you sure you want to delete this task?"
+		questionLine := helpStyle.Render("This action cannot be undone.")
 
 		contentWidth := int(float64(m.windowWidth) * 0.8)
 		if contentWidth < 40 {
@@ -591,11 +591,30 @@ func (m model) View() string {
 
 		centered := lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center)
 
-		helpLine := "y confirm • n/esc cancel"
+		yesBtn := lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("231")).
+			Background(lipgloss.Color("196")).
+			Padding(0, 2).
+			Render("y Delete")
 
-		deleteContent := titleLine + "\n\n" + centered.Render(taskPreview) + "\n\n" + centered.Render(questionLine)
-		deleteHelp := helpStyle.Render(helpLine)
-		box := aboutBoxStyle.Render(deleteContent + "\n\n" + deleteHelp)
+		noBtn := lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("231")).
+			Background(lipgloss.Color("240")).
+			Padding(0, 2).
+			Render("n Cancel")
+
+		buttons := yesBtn + "  " + noBtn
+
+		deleteContent := centered.Render(titleLine) + "\n\n" + centered.Render(taskPreview) + "\n\n" + centered.Render(questionLine) + "\n\n" + centered.Render(buttons)
+
+		dangerBoxStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("196")).
+			Padding(1, 2)
+
+		box := dangerBoxStyle.Render(deleteContent)
 
 		return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
 	}
