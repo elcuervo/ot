@@ -173,6 +173,30 @@ func saveTask(task *Task) error {
 	return os.Rename(tempPath, task.FilePath)
 }
 
+// deleteTask removes a task line from its source file
+func deleteTask(task *Task) error {
+	content, err := os.ReadFile(task.FilePath)
+
+	if err != nil {
+		return err
+	}
+
+	lines := strings.Split(string(content), "\n")
+
+	if task.LineNumber > 0 && task.LineNumber <= len(lines) {
+		lines = append(lines[:task.LineNumber-1], lines[task.LineNumber:]...)
+	}
+
+	tempPath := task.FilePath + ".tmp"
+	err = os.WriteFile(tempPath, []byte(strings.Join(lines, "\n")), 0644)
+
+	if err != nil {
+		return err
+	}
+
+	return os.Rename(tempPath, task.FilePath)
+}
+
 // editorFinishedMsg is sent when the external editor closes
 type editorFinishedMsg struct {
 	err  error

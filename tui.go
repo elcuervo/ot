@@ -43,6 +43,9 @@ type model struct {
 	editing     bool
 	editingTask *Task
 	textInput   textinput.Model
+
+	deleting     bool
+	deletingTask *Task
 }
 
 func newModel(sections []QuerySection, vaultPath string, titleName string, queryFile string, queries []*Query, editorMode string) model {
@@ -283,6 +286,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		if m.deleting {
+			switch msg.String() {
+			case "y", "Y":
+				if m.deletingTask != nil {
+					if err := deleteTask(m.deletingTask); err != nil {
+						m.err = err
+					}
+				}
+				m.deleting = false
+				m.deletingTask = nil
+				m.refresh()
+				return m, nil
+
+			case "n", "N", "esc", "ctrl+[":
+				m.deleting = false
+				m.deletingTask = nil
+				return m, nil
+
+			case "ctrl+c":
+				m.quitting = true
+				return m, tea.Quit
+			}
+			return m, nil
+		}
+
 		if msg.String() == "?" {
 			m.aboutOpen = true
 			return m, nil
@@ -336,6 +364,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if len(tasks) > 0 && m.cursor < len(tasks) {
 						task := tasks[m.cursor]
 						return m, m.startEdit(task)
+					}
+					return m, nil
+
+				case "d":
+					tasks := m.activeTasks()
+					if len(tasks) > 0 && m.cursor < len(tasks) {
+						m.deleting = true
+						m.deletingTask = tasks[m.cursor]
 					}
 					return m, nil
 				}
@@ -437,6 +473,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				task := m.tasks[m.cursor]
 				return m, m.startEdit(task)
 			}
+
+		case "d":
+			if len(m.tasks) > 0 {
+				m.deleting = true
+				m.deletingTask = m.tasks[m.cursor]
+			}
 		}
 	}
 
@@ -475,6 +517,7 @@ func (m model) View() string {
 			"g/G        first/last",
 			"space      toggle task",
 			"e          edit task",
+			"d          delete task",
 			"r          refresh",
 			"/          search",
 			"esc        exit search",
@@ -531,6 +574,28 @@ func (m model) View() string {
 		editContent := titleLine + "\n\n" + inputLine
 		editHelp := helpStyle.Render(helpLine)
 		box := aboutBoxStyle.Render(editContent + "\n\n" + editHelp)
+
+		return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
+	}
+
+	if m.deleting && m.deletingTask != nil {
+		titleLine := aboutStyle.Render("Delete Task")
+
+		taskPreview := renderTask(m.deletingTask.Done, m.deletingTask.Description)
+		questionLine := "Are you sure you want to delete this task?"
+
+		contentWidth := int(float64(m.windowWidth) * 0.8)
+		if contentWidth < 40 {
+			contentWidth = 40
+		}
+
+		centered := lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center)
+
+		helpLine := "y confirm • n/esc cancel"
+
+		deleteContent := titleLine + "\n\n" + centered.Render(taskPreview) + "\n\n" + centered.Render(questionLine)
+		deleteHelp := helpStyle.Render(helpLine)
+		box := aboutBoxStyle.Render(deleteContent + "\n\n" + deleteHelp)
 
 		return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
 	}
