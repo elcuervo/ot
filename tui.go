@@ -292,7 +292,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.deleting {
 			switch msg.String() {
-			case "y", "Y":
+			case "y", "Y", "enter":
 				if m.deletingTask != nil {
 					if err := deleteTask(m.deletingTask); err != nil {
 						m.err = err
