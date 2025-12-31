@@ -52,8 +52,10 @@ jobs:
             binary="ot.exe"
           fi
 
+          build_sha="$(git rev-parse --short HEAD)"
+
           CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
-            go build -trimpath -ldflags "-s -w" -o "dist/${binary}" .
+            go build -trimpath -ldflags "-s -w -X main.buildSHA=${build_sha}" -o "dist/${binary}" .
 
           if [ "$goos" = "windows" ]; then
             zip -j "dist/${pkg}.zip" "dist/${binary}"
