@@ -31,11 +31,14 @@
           '';
         };
 
-        packages.default = pkgs.buildGoModule {
-          pname = "ot";
-          inherit version;
-          src = ./.;
-          vendorHash = "sha256-N51t/7t0I9MaaZUPswoAJf5sah7TIC7gT6HRrvQXYYI=";
+        packages = {
+          ot = pkgs.buildGoModule {
+            pname = "ot";
+            inherit version;
+            src = ./.;
+            vendorHash = "sha256-N51t/7t0I9MaaZUPswoAJf5sah7TIC7gT6HRrvQXYYI=";
+          };
+          default = self.packages.${system}.ot;
         };
       }
     );
