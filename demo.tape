@@ -66,6 +66,19 @@ Sleep 500ms
 Enter
 Sleep 1s
 
+# === ADD A TASK ===
+# Add a new task after current one
+Type "a"
+Sleep 800ms
+
+# Type the new task
+Type "Follow up on PR review"
+Sleep 600ms
+
+# Save
+Enter
+Sleep 1s
+
 # === DELETE A TASK ===
 # Navigate down to a task
 Down
