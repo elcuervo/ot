@@ -551,9 +551,9 @@ func (m model) View() string {
 			query := strings.ToLower(m.searchQuery)
 
 			for i, task := range tasks {
-				cursor := "  "
+				cursor := " "
 				if m.cursor == i {
-					cursor = cursorStyle.Render("> ")
+					cursor = cursorStyle.Render(">")
 				}
 
 				sectionName := m.taskToSection[task]
@@ -665,10 +665,14 @@ func (m model) View() string {
 				}
 
 				for _, task := range group.Tasks {
-					cursor := "  "
+					indent := ""
+					if section.Query.GroupBy != "" && group.Name != "" {
+						indent = "  "
+					}
 
+					cursor := " "
 					if m.cursor == taskIndex {
-						cursor = cursorStyle.Render("> ")
+						cursor = cursorStyle.Render(">")
 					}
 
 					fileInfo := ""
@@ -685,7 +689,7 @@ func (m model) View() string {
 					}
 
 					lines = append(lines, viewLine{
-						content:   fmt.Sprintf("%s%s%s", cursor, line, fileInfo),
+						content:   fmt.Sprintf("%s%s%s%s", indent, cursor, line, fileInfo),
 						taskIndex: taskIndex,
 					})
 
