@@ -556,11 +556,6 @@ func (m model) View() string {
 					cursor = cursorStyle.Render("> ")
 				}
 
-				checkbox := "[ ]"
-				if task.Done {
-					checkbox = "[x]"
-				}
-
 				sectionName := m.taskToSection[task]
 				groupName := m.taskToGroup[task]
 				descLower := strings.ToLower(task.Description)
@@ -580,14 +575,10 @@ func (m model) View() string {
 				}
 				fileInfo := fileStyle.Render(fmt.Sprintf(" (%s:%d)", relPath(m.vaultPath, task.FilePath), task.LineNumber))
 
-				var line string
-				desc := renderMarkdown(task.Description)
+				line := renderTask(task.Done, task.Description)
 				if task.Done {
-					line = doneStyle.Render(fmt.Sprintf("%s %s", checkbox, desc))
-				} else {
-					line = fmt.Sprintf("%s %s", checkbox, desc)
+					line = doneStyle.Render(line)
 				}
-
 				if m.cursor == i {
 					line = selectedStyle.Render(line)
 				}
@@ -689,12 +680,6 @@ func (m model) View() string {
 						cursor = cursorStyle.Render("> ")
 					}
 
-					checkbox := "[ ]"
-
-					if task.Done {
-						checkbox = "[x]"
-					}
-
 					fileInfo := ""
 
 					if section.Query.GroupBy != "filename" {
@@ -703,15 +688,10 @@ func (m model) View() string {
 						fileInfo = fileStyle.Render(fmt.Sprintf(" (:%d)", task.LineNumber))
 					}
 
-					var line string
-					desc := renderMarkdown(task.Description)
-
+					line := renderTask(task.Done, task.Description)
 					if task.Done {
-						line = doneStyle.Render(fmt.Sprintf("%s %s", checkbox, desc))
-					} else {
-						line = fmt.Sprintf("%s %s", checkbox, desc)
+						line = doneStyle.Render(line)
 					}
-
 					if m.cursor == taskIndex {
 						line = selectedStyle.Render(line)
 					}
