@@ -17,6 +17,7 @@ import (
 	"github.com/BurntSushi/toml"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/savioxavier/termlink"
 )
 
 //go:embed VERSION
@@ -39,6 +40,7 @@ var (
 	groupByFuncRe   = regexp.MustCompile(`group by function task\.file\.(\w+)`)
 	groupBySimpleRe = regexp.MustCompile(`group by (\w+)`)
 	dateFilterRe    = regexp.MustCompile(`(due|scheduled|done)\s+((?:today|tomorrow|yesterday)(?:\s+or\s+(?:today|tomorrow|yesterday))*|before\s+\S+|after\s+\S+|on\s+\S+(?:\s+or\s+\S+)*)`)
+	mdLinkRe        = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
 )
 
 // Task represents a single task from a markdown file
@@ -94,6 +96,19 @@ func (t *Task) rebuildRawLine() {
 	}
 
 	t.RawLine = fmt.Sprintf("%s%s %s", prefix, checkbox, t.Description)
+}
+
+// renderWithLinks converts markdown links [text](url) to clickable terminal hyperlinks
+func renderWithLinks(text string) string {
+	return mdLinkRe.ReplaceAllStringFunc(text, func(match string) string {
+		parts := mdLinkRe.FindStringSubmatch(match)
+		if len(parts) == 3 {
+			linkText := parts[1]
+			url := parts[2]
+			return termlink.Link(linkText, url)
+		}
+		return match
+	})
 }
 
 // scanVault recursively finds all .md files in a directory
@@ -1577,10 +1592,11 @@ func (m model) View() string {
 				fileInfo := fileStyle.Render(fmt.Sprintf(" (%s:%d)", relPath(m.vaultPath, task.FilePath), task.LineNumber))
 
 				var line string
+				desc := renderWithLinks(task.Description)
 				if task.Done {
-					line = doneStyle.Render(fmt.Sprintf("%s %s", checkbox, task.Description))
+					line = doneStyle.Render(fmt.Sprintf("%s %s", checkbox, desc))
 				} else {
-					line = fmt.Sprintf("%s %s", checkbox, task.Description)
+					line = fmt.Sprintf("%s %s", checkbox, desc)
 				}
 
 				if m.cursor == i {
@@ -1707,11 +1723,12 @@ func (m model) View() string {
 
 					// Format line
 					var line string
+					desc := renderWithLinks(task.Description)
 
 					if task.Done {
-						line = doneStyle.Render(fmt.Sprintf("%s %s", checkbox, task.Description))
+						line = doneStyle.Render(fmt.Sprintf("%s %s", checkbox, desc))
 					} else {
-						line = fmt.Sprintf("%s %s", checkbox, task.Description)
+						line = fmt.Sprintf("%s %s", checkbox, desc)
 					}
 
 					// Highlight if selected
