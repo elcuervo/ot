@@ -510,40 +510,96 @@ func (m model) View() string {
 		}
 
 		versionLine := fmt.Sprintf("ot v%s (%s)", strings.TrimSpace(version), sha)
-		creditLine := "created with ☠️ by elcuervo\n"
+		creditLine := "created with ☠️ by elcuervo"
 
-		keybindings := []string{
-			"↑/k ↓/j    navigate",
-			"g/G        first/last",
-			"space      toggle task",
-			"e          edit task",
-			"d          delete task",
-			"r          refresh",
-			"/          search",
-			"esc        exit search",
-			"?          toggle help",
-			"q          quit",
-		}
-
-		helpLine := "esc or q to close"
 		contentWidth := int(float64(m.windowWidth) * 0.8)
-
-		if contentWidth < 24 {
-			contentWidth = 24
+		if contentWidth < 50 {
+			contentWidth = 50
+		}
+		if contentWidth > 70 {
+			contentWidth = 70
 		}
 
 		centered := lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center)
-		left := lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Left)
+
+		keyStyle := lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("212"))
+
+		descStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("252"))
+
+		sectionTitleStyle := lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("99")).
+			MarginTop(1)
+
+		// Build keybindings in two columns
+		colWidth := (contentWidth - 4) / 2
+
+		renderBinding := func(key, desc string) string {
+			return keyStyle.Render(key) + " " + descStyle.Render(desc)
+		}
+
+		padToWidth := func(s string, width int) string {
+			visibleLen := lipgloss.Width(s)
+			if visibleLen < width {
+				return s + strings.Repeat(" ", width-visibleLen)
+			}
+			return s
+		}
+
+		// Navigation section
+		navTitle := sectionTitleStyle.Render("Navigation")
+		navBindings := [][]string{
+			{renderBinding("↑/k", "move up"), renderBinding("↓/j", "move down")},
+			{renderBinding("g", "first task"), renderBinding("G", "last task")},
+		}
+
+		// Actions section
+		actTitle := sectionTitleStyle.Render("Actions")
+		actBindings := [][]string{
+			{renderBinding("space", "toggle task"), renderBinding("e", "edit task")},
+			{renderBinding("d", "delete task"), renderBinding("r", "refresh")},
+		}
+
+		// Search section
+		searchTitle := sectionTitleStyle.Render("Search")
+		searchBindings := [][]string{
+			{renderBinding("/", "start search"), renderBinding("esc", "exit search")},
+		}
+
+		// General section
+		genTitle := sectionTitleStyle.Render("General")
+		genBindings := [][]string{
+			{renderBinding("?", "toggle help"), renderBinding("q", "quit")},
+		}
+
+		renderSection := func(title string, bindings [][]string) string {
+			result := centered.Render(title) + "\n"
+			for _, row := range bindings {
+				if len(row) == 2 {
+					left := padToWidth(row[0], colWidth)
+					right := row[1]
+					result += centered.Render(left + right) + "\n"
+				} else if len(row) == 1 {
+					result += centered.Render(row[0]) + "\n"
+				}
+			}
+			return result
+		}
+
+		keybindingsText := "\n"
+		keybindingsText += renderSection(navTitle, navBindings)
+		keybindingsText += renderSection(actTitle, actBindings)
+		keybindingsText += renderSection(searchTitle, searchBindings)
+		keybindingsText += renderSection(genTitle, genBindings)
 
 		aboutText := aboutStyle.Render(centered.Render(versionLine) + "\n" + centered.Render(creditLine))
 
-		keybindingsText := "\n"
-
-		for _, line := range keybindings {
-			keybindingsText += left.Render(line) + "\n"
-		}
-
+		helpLine := "esc or q to close"
 		aboutHelp := helpStyle.Render(centered.Render(helpLine))
+
 		box := aboutBoxStyle.Render(aboutText + keybindingsText + "\n" + aboutHelp)
 
 		return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
