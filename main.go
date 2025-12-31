@@ -13,6 +13,7 @@ import (
 
 //go:embed VERSION
 var version string
+var buildSHA string
 
 func main() {
 	vaultPath := flag.String("vault", "", "Path to Obsidian vault")
@@ -23,7 +24,13 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("ot version %s\n", strings.TrimSpace(version))
+		sha := strings.TrimSpace(buildSHA)
+
+		if sha == "" {
+			sha = "unknown"
+		}
+
+		fmt.Printf("ot version v%s (%s)\n", strings.TrimSpace(version), sha)
 		os.Exit(0)
 	}
 

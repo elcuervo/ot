@@ -12,7 +12,7 @@ test-watch:
   find . -name '*.go' | entr -c go test -v ./...
 
 build:
-  go build -o ot .
+  go build -ldflags "-X main.buildSHA=$(git rev-parse --short HEAD)" -o ot
 
 install:
   go install .
