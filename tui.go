@@ -46,6 +46,10 @@ type model struct {
 
 	deleting     bool
 	deletingTask *Task
+
+	adding      bool
+	addingRef   *Task
+	addingInput textinput.Model
 }
 
 func newModel(sections []QuerySection, vaultPath string, titleName string, queryFile string, queries []*Query, editorMode string) model {
@@ -311,6 +315,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if m.adding {
+			switch msg.String() {
+			case "esc", "ctrl+[":
+				m.adding = false
+				m.addingRef = nil
+				return m, nil
+
+			case "enter":
+				newValue := strings.TrimSpace(m.addingInput.Value())
+				if m.addingRef != nil && newValue != "" {
+					if _, err := addTask(m.addingRef, newValue); err != nil {
+						m.err = err
+					}
+				}
+				m.adding = false
+				m.addingRef = nil
+				m.refresh()
+				return m, nil
+
+			case "ctrl+c":
+				m.quitting = true
+				return m, tea.Quit
+
+			default:
+				var cmd tea.Cmd
+				m.addingInput, cmd = m.addingInput.Update(msg)
+				return m, cmd
+			}
+		}
+
 		if msg.String() == "?" {
 			m.aboutOpen = true
 			return m, nil
@@ -372,6 +406,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if len(tasks) > 0 && m.cursor < len(tasks) {
 						m.deleting = true
 						m.deletingTask = tasks[m.cursor]
+					}
+					return m, nil
+
+				case "a":
+					tasks := m.activeTasks()
+					if len(tasks) > 0 && m.cursor < len(tasks) {
+						m.adding = true
+						m.addingRef = tasks[m.cursor]
+						m.addingInput = textinput.New()
+						m.addingInput.Placeholder = "New task description..."
+						m.addingInput.Focus()
+						m.addingInput.CharLimit = 500
 					}
 					return m, nil
 				}
@@ -479,6 +525,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.deleting = true
 				m.deletingTask = m.tasks[m.cursor]
 			}
+
+		case "a":
+			if len(m.tasks) > 0 {
+				m.adding = true
+				m.addingRef = m.tasks[m.cursor]
+				m.addingInput = textinput.New()
+				m.addingInput.Placeholder = "New task description..."
+				m.addingInput.Focus()
+				m.addingInput.CharLimit = 500
+			}
 		}
 	}
 
@@ -549,6 +605,7 @@ func (m model) View() string {
 		// Right column: Actions + General
 		rightCol := headerStyle.Render("Actions") + "\n"
 		rightCol += renderKey("space", "toggle") + "\n"
+		rightCol += renderKey("a", "add") + "\n"
 		rightCol += renderKey("e", "edit") + "\n"
 		rightCol += renderKey("d", "delete") + "\n"
 		rightCol += renderKey("r", "refresh") + "\n"
@@ -664,6 +721,32 @@ func (m model) View() string {
 			Padding(1, 2)
 
 		box := dangerBoxStyle.Render(deleteContent)
+
+		return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
+	}
+
+	if m.adding && m.addingRef != nil {
+		titleLine := confirmStyle.Render("+ Add Task")
+
+		fileInfo := fileStyle.Render(fmt.Sprintf("Adding to: %s", relPath(m.vaultPath, m.addingRef.FilePath)))
+
+		maxWidth := m.windowWidth - 10
+		if maxWidth > 70 {
+			maxWidth = 70
+		}
+		if maxWidth < 30 {
+			maxWidth = 30
+		}
+
+		m.addingInput.Width = maxWidth - 6
+
+		inputLine := "[ ] " + m.addingInput.View()
+
+		helpLine := "enter save • esc cancel"
+
+		addContent := titleLine + "\n" + fileInfo + "\n\n" + inputLine
+		addHelp := helpStyle.Render(helpLine)
+		box := aboutBoxStyle.Render(addContent + "\n\n" + addHelp)
 
 		return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
 	}

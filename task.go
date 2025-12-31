@@ -197,6 +197,49 @@ func deleteTask(task *Task) error {
 	return os.Rename(tempPath, task.FilePath)
 }
 
+// addTask inserts a new task line after the reference task in its source file
+func addTask(refTask *Task, description string) (*Task, error) {
+	content, err := os.ReadFile(refTask.FilePath)
+
+	if err != nil {
+		return nil, err
+	}
+
+	lines := strings.Split(string(content), "\n")
+	newLine := "- [ ] " + description
+
+	// Insert after the reference task's line
+	insertAt := refTask.LineNumber
+	if insertAt > len(lines) {
+		insertAt = len(lines)
+	}
+
+	// Insert the new line
+	newLines := make([]string, 0, len(lines)+1)
+	newLines = append(newLines, lines[:insertAt]...)
+	newLines = append(newLines, newLine)
+	newLines = append(newLines, lines[insertAt:]...)
+
+	tempPath := refTask.FilePath + ".tmp"
+	err = os.WriteFile(tempPath, []byte(strings.Join(newLines, "\n")), 0644)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.Rename(tempPath, refTask.FilePath); err != nil {
+		return nil, err
+	}
+
+	return &Task{
+		FilePath:    refTask.FilePath,
+		LineNumber:  insertAt + 1,
+		RawLine:     newLine,
+		Done:        false,
+		Description: description,
+	}, nil
+}
+
 // editorFinishedMsg is sent when the external editor closes
 type editorFinishedMsg struct {
 	err  error
