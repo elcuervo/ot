@@ -1,38 +1,38 @@
 default:
-    @just --list
+  @just --list
 
 test:
-    go test -v ./...
+  go test -v ./...
 
 test-coverage:
-    go test -v -coverprofile=coverage.out ./...
-    go tool cover -html=coverage.out -o coverage.html
+  go test -v -coverprofile=coverage.out ./...
+  go tool cover -html=coverage.out -o coverage.html
 
 test-watch:
-    find . -name '*.go' | entr -c go test -v ./...
+  find . -name '*.go' | entr -c go test -v ./...
 
 build:
-    go build -o ot .
+  go build -o ot .
 
 install:
-    go install .
+  go install .
 
 nix-install:
-    nix profile remove ot 2>/dev/null || true
-    nix profile add .# --refresh
+  nix profile remove ot 2>/dev/null || true
+  nix profile install .#ot --refresh --no-substitute
 
 tag version:
-    git tag "v{{version}}"
+  git tag "v{{version}}"
 
 release version:
-    git tag "v{{version}}"
-    git push origin "v{{version}}"
+  git tag "v{{version}}"
+  git push origin "v{{version}}"
 
 fmt:
-    go fmt ./...
+  go fmt ./...
 
 vet:
-    go vet ./...
+  go vet ./...
 
 lint: fmt vet
 
@@ -43,10 +43,10 @@ gif:
   vhs -p demo.tape
 
 clean:
-    rm -f ot coverage.out coverage.html
+  rm -f ot coverage.out coverage.html
 
 run vault query:
-    go run . --vault {{vault}} {{query}}
+  go run . --vault {{vault}} {{query}}
 
 list vault query:
-    go run . --vault {{vault}} --list {{query}}
+  go run . --vault {{vault}} --list {{query}}
