@@ -240,6 +240,23 @@ func addTask(refTask *Task, description string) (*Task, error) {
 	}, nil
 }
 
+// addEmptyTask inserts an empty task line after the reference task and returns it
+func addEmptyTask(refTask *Task) (*Task, error) {
+	return addTask(refTask, "")
+}
+
+// openNewTaskInEditor creates an empty task and opens it in an external editor
+func openNewTaskInEditor(refTask *Task) tea.Cmd {
+	newTask, err := addEmptyTask(refTask)
+	if err != nil {
+		return func() tea.Msg {
+			return editorFinishedMsg{err: err, task: nil}
+		}
+	}
+
+	return openInEditor(newTask)
+}
+
 // editorFinishedMsg is sent when the external editor closes
 type editorFinishedMsg struct {
 	err  error

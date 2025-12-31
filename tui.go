@@ -231,6 +231,28 @@ func (m *model) startEdit(task *Task) tea.Cmd {
 	return openInEditor(task)
 }
 
+func (m *model) startAdd(refTask *Task) tea.Cmd {
+	useInline := m.editorMode == "inline"
+
+	if !useInline && m.editorMode != "external" {
+		if os.Getenv("EDITOR") == "" {
+			useInline = true
+		}
+	}
+
+	if useInline {
+		m.adding = true
+		m.addingRef = refTask
+		m.addingInput = textinput.New()
+		m.addingInput.Placeholder = "New task description..."
+		m.addingInput.Focus()
+		m.addingInput.CharLimit = 500
+		return nil
+	}
+
+	return openNewTaskInEditor(refTask)
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -409,15 +431,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, nil
 
-				case "a":
+				case "a", "n":
 					tasks := m.activeTasks()
 					if len(tasks) > 0 && m.cursor < len(tasks) {
-						m.adding = true
-						m.addingRef = tasks[m.cursor]
-						m.addingInput = textinput.New()
-						m.addingInput.Placeholder = "New task description..."
-						m.addingInput.Focus()
-						m.addingInput.CharLimit = 500
+						task := tasks[m.cursor]
+						return m, m.startAdd(task)
 					}
 					return m, nil
 				}
@@ -526,14 +544,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.deletingTask = m.tasks[m.cursor]
 			}
 
-		case "a":
+		case "a", "n":
 			if len(m.tasks) > 0 {
-				m.adding = true
-				m.addingRef = m.tasks[m.cursor]
-				m.addingInput = textinput.New()
-				m.addingInput.Placeholder = "New task description..."
-				m.addingInput.Focus()
-				m.addingInput.CharLimit = 500
+				task := m.tasks[m.cursor]
+				return m, m.startAdd(task)
 			}
 		}
 	}
@@ -605,7 +619,7 @@ func (m model) View() string {
 		// Right column: Actions + General
 		rightCol := headerStyle.Render("Actions") + "\n"
 		rightCol += renderKey("space", "toggle") + "\n"
-		rightCol += renderKey("a", "add") + "\n"
+		rightCol += renderKey("a n", "add") + "\n"
 		rightCol += renderKey("e", "edit") + "\n"
 		rightCol += renderKey("d", "delete") + "\n"
 		rightCol += renderKey("r", "refresh") + "\n"
