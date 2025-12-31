@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/savioxavier/termlink"
@@ -825,8 +826,11 @@ func (m *model) startEdit(task *Task) tea.Cmd {
 		// Enter inline edit mode - only edit the description
 		m.editing = true
 		m.editingTask = task
-		m.editInput = task.Description
-		m.editCursor = len(task.Description)
+		m.textInput = textinput.New()
+		m.textInput.SetValue(task.Description)
+		m.textInput.Focus()
+		m.textInput.CursorEnd()
+		m.textInput.CharLimit = 500
 		return nil
 	}
 
@@ -889,11 +893,10 @@ type model struct {
 	taskToGroup      map[*Task]string // Map task to its group name for search
 
 	// Editor state
-	editorMode  string // "external" or "inline" from config
-	editing     bool   // Whether inline edit mode is active
-	editingTask *Task  // Task being edited inline
-	editInput   string // Current edit buffer
-	editCursor  int    // Cursor position in edit buffer
+	editorMode  string          // "external" or "inline" from config
+	editing     bool            // Whether inline edit mode is active
+	editingTask *Task           // Task being edited inline
+	textInput   textinput.Model // Text input component for inline editing
 }
 
 func newModel(sections []QuerySection, vaultPath string, titleName string, queryFile string, queries []*Query, editorMode string) model {
@@ -1102,14 +1105,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Cancel edit
 				m.editing = false
 				m.editingTask = nil
-				m.editInput = ""
-				m.editCursor = 0
 				return m, nil
 
 			case "enter":
 				// Save edit - update description and rebuild raw line
-				if m.editingTask != nil && m.editInput != m.editingTask.Description {
-					m.editingTask.Description = m.editInput
+				newValue := m.textInput.Value()
+				if m.editingTask != nil && newValue != m.editingTask.Description {
+					m.editingTask.Description = newValue
 					m.editingTask.Modified = true
 					// Rebuild raw line with new description
 					m.editingTask.rebuildRawLine()
@@ -1119,8 +1121,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.editing = false
 				m.editingTask = nil
-				m.editInput = ""
-				m.editCursor = 0
 				m.refresh()
 				return m, nil
 
@@ -1128,46 +1128,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.quitting = true
 				return m, tea.Quit
 
-			case "backspace":
-				if m.editCursor > 0 {
-					m.editInput = m.editInput[:m.editCursor-1] + m.editInput[m.editCursor:]
-					m.editCursor--
-				}
-				return m, nil
-
-			case "delete":
-				if m.editCursor < len(m.editInput) {
-					m.editInput = m.editInput[:m.editCursor] + m.editInput[m.editCursor+1:]
-				}
-				return m, nil
-
-			case "left":
-				if m.editCursor > 0 {
-					m.editCursor--
-				}
-				return m, nil
-
-			case "right":
-				if m.editCursor < len(m.editInput) {
-					m.editCursor++
-				}
-				return m, nil
-
-			case "home", "ctrl+a":
-				m.editCursor = 0
-				return m, nil
-
-			case "end", "ctrl+e":
-				m.editCursor = len(m.editInput)
-				return m, nil
-
 			default:
-				// Insert character at cursor position
-				if len(msg.String()) == 1 {
-					m.editInput = m.editInput[:m.editCursor] + msg.String() + m.editInput[m.editCursor:]
-					m.editCursor++
-				}
-				return m, nil
+				// Delegate all other keys to the textinput component
+				var cmd tea.Cmd
+				m.textInput, cmd = m.textInput.Update(msg)
+				return m, cmd
 			}
 		}
 
@@ -1368,10 +1333,6 @@ var (
 				Background(lipgloss.Color("214")).
 				Padding(0, 1)
 
-	editCursorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("231")).
-			Background(lipgloss.Color("212"))
-
 	aboutStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("white"))
@@ -1460,47 +1421,31 @@ func (m model) View() string {
 
 	// Edit popup (centered modal)
 	if m.editing && m.editingTask != nil {
-		titleLine := aboutStyle.Render("Edit Task description")
+		titleLine := aboutStyle.Render("Edit Task")
 
-		// Build the input line with cursor
+		// Build the input line with checkbox prefix
 		checkbox := "[ ] "
 		if m.editingTask.Done {
 			checkbox = "[x] "
 		}
 
-		var inputLine strings.Builder
-		inputLine.WriteString(checkbox)
-		inputLine.WriteString(m.editInput[:m.editCursor])
-		if m.editCursor < len(m.editInput) {
-			inputLine.WriteString(editCursorStyle.Render(string(m.editInput[m.editCursor])))
-			inputLine.WriteString(m.editInput[m.editCursor+1:])
-		} else {
-			inputLine.WriteString(editCursorStyle.Render(" "))
+		// Calculate box width - use most of window but cap it
+		maxWidth := m.windowWidth - 10
+		if maxWidth > 70 {
+			maxWidth = 70
+		}
+		if maxWidth < 30 {
+			maxWidth = 30
 		}
 
-		// Calculate box width - use most of window but cap it
-		maxWidth := m.windowWidth - 8
-		if maxWidth > 60 {
-			maxWidth = 60
-		}
-		if maxWidth < 20 {
-			maxWidth = 20
-		}
+		// Set textinput width to fit in the box
+		m.textInput.Width = maxWidth - 6 // Account for checkbox and padding
+
+		inputLine := checkbox + m.textInput.View()
 
 		helpLine := "enter save • esc cancel"
-		contentWidth := lipgloss.Width(inputLine.String())
-		if contentWidth < lipgloss.Width(titleLine) {
-			contentWidth = lipgloss.Width(titleLine)
-		}
-		if contentWidth < lipgloss.Width(helpLine) {
-			contentWidth = lipgloss.Width(helpLine)
-		}
-		if contentWidth > maxWidth {
-			contentWidth = maxWidth
-		}
 
-		centered := lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Left)
-		editContent := titleLine + "\n\n" + centered.Render(inputLine.String())
+		editContent := titleLine + "\n\n" + inputLine
 		editHelp := helpStyle.Render(helpLine)
 		box := aboutBoxStyle.Render(editContent + "\n\n" + editHelp)
 
