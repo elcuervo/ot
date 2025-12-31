@@ -1460,7 +1460,7 @@ func (m model) View() string {
 
 	// Edit popup (centered modal)
 	if m.editing && m.editingTask != nil {
-		titleLine := aboutStyle.Render("Edit Task")
+		titleLine := aboutStyle.Render("Edit Task description")
 
 		// Build the input line with cursor
 		checkbox := "[ ] "
