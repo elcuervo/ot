@@ -576,9 +576,6 @@ func (m model) View() string {
 				fileInfo := fileStyle.Render(fmt.Sprintf(" (%s:%d)", relPath(m.vaultPath, task.FilePath), task.LineNumber))
 
 				line := renderTask(task.Done, task.Description)
-				if task.Done {
-					line = doneStyle.Render(line)
-				}
 				if m.cursor == i {
 					line = selectedStyle.Render(line)
 				}
@@ -683,9 +680,6 @@ func (m model) View() string {
 					}
 
 					line := renderTask(task.Done, task.Description)
-					if task.Done {
-						line = doneStyle.Render(line)
-					}
 					if m.cursor == taskIndex {
 						line = selectedStyle.Render(line)
 					}
