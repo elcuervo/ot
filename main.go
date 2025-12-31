@@ -80,6 +80,22 @@ func (t *Task) updateRawLine() {
 	}
 }
 
+// rebuildRawLine rebuilds the raw line with a new description
+func (t *Task) rebuildRawLine() {
+	matches := checkboxRe.FindStringSubmatch(t.RawLine)
+	if matches == nil {
+		return
+	}
+
+	prefix := matches[1] // "- " or "  - " etc
+	checkbox := "[ ]"
+	if t.Done {
+		checkbox = "[x]"
+	}
+
+	t.RawLine = fmt.Sprintf("%s%s %s", prefix, checkbox, t.Description)
+}
+
 // scanVault recursively finds all .md files in a directory
 func scanVault(vaultPath string) ([]string, error) {
 	var files []string
@@ -791,11 +807,11 @@ func (m *model) startEdit(task *Task) tea.Cmd {
 	}
 
 	if useInline {
-		// Enter inline edit mode
+		// Enter inline edit mode - only edit the description
 		m.editing = true
 		m.editingTask = task
-		m.editInput = task.RawLine
-		m.editCursor = len(task.RawLine)
+		m.editInput = task.Description
+		m.editCursor = len(task.Description)
 		return nil
 	}
 
@@ -1076,15 +1092,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 
 			case "enter":
-				// Save edit
-				if m.editingTask != nil && m.editInput != m.editingTask.RawLine {
-					m.editingTask.RawLine = m.editInput
+				// Save edit - update description and rebuild raw line
+				if m.editingTask != nil && m.editInput != m.editingTask.Description {
+					m.editingTask.Description = m.editInput
 					m.editingTask.Modified = true
-					// Re-parse task state from the new raw line
-					if matches := taskRe.FindStringSubmatch(m.editInput); matches != nil {
-						m.editingTask.Done = matches[1] == "x" || matches[1] == "X"
-						m.editingTask.Description = strings.TrimSpace(matches[2])
-					}
+					// Rebuild raw line with new description
+					m.editingTask.rebuildRawLine()
 					if err := saveTask(m.editingTask); err != nil {
 						m.err = err
 					}
@@ -1340,16 +1353,6 @@ var (
 				Background(lipgloss.Color("214")).
 				Padding(0, 1)
 
-	editModeStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("231")).
-			Background(lipgloss.Color("34")).
-			Padding(0, 1)
-
-	editInputStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("231")).
-			Background(lipgloss.Color("236"))
-
 	editCursorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("231")).
 			Background(lipgloss.Color("212"))
@@ -1440,14 +1443,61 @@ func (m model) View() string {
 		return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
 	}
 
+	// Edit popup (centered modal)
+	if m.editing && m.editingTask != nil {
+		titleLine := aboutStyle.Render("Edit Task")
+
+		// Build the input line with cursor
+		checkbox := "[ ] "
+		if m.editingTask.Done {
+			checkbox = "[x] "
+		}
+
+		var inputLine strings.Builder
+		inputLine.WriteString(checkbox)
+		inputLine.WriteString(m.editInput[:m.editCursor])
+		if m.editCursor < len(m.editInput) {
+			inputLine.WriteString(editCursorStyle.Render(string(m.editInput[m.editCursor])))
+			inputLine.WriteString(m.editInput[m.editCursor+1:])
+		} else {
+			inputLine.WriteString(editCursorStyle.Render(" "))
+		}
+
+		// Calculate box width - use most of window but cap it
+		maxWidth := m.windowWidth - 8
+		if maxWidth > 60 {
+			maxWidth = 60
+		}
+		if maxWidth < 20 {
+			maxWidth = 20
+		}
+
+		helpLine := "enter save • esc cancel"
+		contentWidth := lipgloss.Width(inputLine.String())
+		if contentWidth < lipgloss.Width(titleLine) {
+			contentWidth = lipgloss.Width(titleLine)
+		}
+		if contentWidth < lipgloss.Width(helpLine) {
+			contentWidth = lipgloss.Width(helpLine)
+		}
+		if contentWidth > maxWidth {
+			contentWidth = maxWidth
+		}
+
+		centered := lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Left)
+		editContent := titleLine + "\n\n" + centered.Render(inputLine.String())
+		editHelp := helpStyle.Render(helpLine)
+		box := aboutBoxStyle.Render(editContent + "\n\n" + editHelp)
+
+		return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
+	}
+
 	// Title
 	titlePrefix := titleStyle.Render("ot - Tasks from ")
 	titleName := titleNameStyle.Render(m.titleName)
 	modeLabel := ""
 
-	if m.editing {
-		modeLabel = editModeStyle.Render("edit")
-	} else if m.searching {
+	if m.searching {
 		if m.searchNavigating {
 			modeLabel = resultsModeStyle.Render("results")
 		} else {
@@ -1473,16 +1523,6 @@ func (m model) View() string {
 			cursorChar := searchStyle.Render("_")
 			b.WriteString(searchLabel + searchInput + cursorChar + "\n")
 		}
-	} else if m.editing {
-		// Show edit bar
-		b.WriteString(editInputStyle.Render(m.editInput[:m.editCursor]))
-		if m.editCursor < len(m.editInput) {
-			b.WriteString(editCursorStyle.Render(string(m.editInput[m.editCursor])))
-			b.WriteString(editInputStyle.Render(m.editInput[m.editCursor+1:]))
-		} else {
-			b.WriteString(editCursorStyle.Render(" "))
-		}
-		b.WriteString("\n")
 	} else {
 		b.WriteString("\n")
 	}
