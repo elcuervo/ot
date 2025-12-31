@@ -504,103 +504,96 @@ func (m model) View() string {
 
 	if m.aboutOpen {
 		sha := strings.TrimSpace(buildSHA)
-
 		if sha == "" {
 			sha = "unknown"
 		}
 
-		versionLine := fmt.Sprintf("ot v%s (%s)", strings.TrimSpace(version), sha)
-		creditLine := "created with ☠️ by elcuervo"
-
-		contentWidth := int(float64(m.windowWidth) * 0.8)
-		if contentWidth < 50 {
-			contentWidth = 50
-		}
-		if contentWidth > 70 {
-			contentWidth = 70
-		}
-
-		centered := lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center)
-
+		// Styles
 		keyStyle := lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("212"))
 
 		descStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252"))
+			Foreground(lipgloss.Color("245"))
 
-		sectionTitleStyle := lipgloss.NewStyle().
+		headerStyle := lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("99")).
-			MarginTop(1)
+			Foreground(lipgloss.Color("99"))
 
-		// Build keybindings in two columns
-		colWidth := (contentWidth - 4) / 2
+		dimStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241"))
 
-		renderBinding := func(key, desc string) string {
-			return keyStyle.Render(key) + " " + descStyle.Render(desc)
+		// Column layout
+		keyWidth := 8
+		descWidth := 12
+		colWidth := keyWidth + descWidth + 1
+		totalWidth := colWidth*2 + 4
+
+		renderKey := func(key, desc string) string {
+			k := keyStyle.Width(keyWidth).Render(key)
+			d := descStyle.Width(descWidth).Render(desc)
+			return k + " " + d
 		}
 
-		padToWidth := func(s string, width int) string {
-			visibleLen := lipgloss.Width(s)
-			if visibleLen < width {
-				return s + strings.Repeat(" ", width-visibleLen)
+		// Left column: Navigation + Search
+		leftCol := headerStyle.Render("Navigation") + "\n"
+		leftCol += renderKey("↑ k", "up") + "\n"
+		leftCol += renderKey("↓ j", "down") + "\n"
+		leftCol += renderKey("g", "first") + "\n"
+		leftCol += renderKey("G", "last") + "\n"
+		leftCol += "\n"
+		leftCol += headerStyle.Render("Search") + "\n"
+		leftCol += renderKey("/", "search") + "\n"
+		leftCol += renderKey("esc", "exit") + "\n"
+
+		// Right column: Actions + General
+		rightCol := headerStyle.Render("Actions") + "\n"
+		rightCol += renderKey("space", "toggle") + "\n"
+		rightCol += renderKey("e", "edit") + "\n"
+		rightCol += renderKey("d", "delete") + "\n"
+		rightCol += renderKey("r", "refresh") + "\n"
+		rightCol += "\n"
+		rightCol += headerStyle.Render("General") + "\n"
+		rightCol += renderKey("?", "help") + "\n"
+		rightCol += renderKey("q", "quit") + "\n"
+
+		// Join columns side by side
+		leftLines := strings.Split(leftCol, "\n")
+		rightLines := strings.Split(rightCol, "\n")
+
+		maxLines := len(leftLines)
+		if len(rightLines) > maxLines {
+			maxLines = len(rightLines)
+		}
+
+		columns := ""
+		for i := 0; i < maxLines; i++ {
+			left := ""
+			right := ""
+			if i < len(leftLines) {
+				left = leftLines[i]
 			}
-			return s
-		}
-
-		// Navigation section
-		navTitle := sectionTitleStyle.Render("Navigation")
-		navBindings := [][]string{
-			{renderBinding("↑/k", "move up"), renderBinding("↓/j", "move down")},
-			{renderBinding("g", "first task"), renderBinding("G", "last task")},
-		}
-
-		// Actions section
-		actTitle := sectionTitleStyle.Render("Actions")
-		actBindings := [][]string{
-			{renderBinding("space", "toggle task"), renderBinding("e", "edit task")},
-			{renderBinding("d", "delete task"), renderBinding("r", "refresh")},
-		}
-
-		// Search section
-		searchTitle := sectionTitleStyle.Render("Search")
-		searchBindings := [][]string{
-			{renderBinding("/", "start search"), renderBinding("esc", "exit search")},
-		}
-
-		// General section
-		genTitle := sectionTitleStyle.Render("General")
-		genBindings := [][]string{
-			{renderBinding("?", "toggle help"), renderBinding("q", "quit")},
-		}
-
-		renderSection := func(title string, bindings [][]string) string {
-			result := centered.Render(title) + "\n"
-			for _, row := range bindings {
-				if len(row) == 2 {
-					left := padToWidth(row[0], colWidth)
-					right := row[1]
-					result += centered.Render(left + right) + "\n"
-				} else if len(row) == 1 {
-					result += centered.Render(row[0]) + "\n"
-				}
+			if i < len(rightLines) {
+				right = rightLines[i]
 			}
-			return result
+			// Pad left column
+			leftVisible := lipgloss.Width(left)
+			if leftVisible < colWidth {
+				left += strings.Repeat(" ", colWidth-leftVisible)
+			}
+			columns += left + "    " + right + "\n"
 		}
 
-		keybindingsText := "\n"
-		keybindingsText += renderSection(navTitle, navBindings)
-		keybindingsText += renderSection(actTitle, actBindings)
-		keybindingsText += renderSection(searchTitle, searchBindings)
-		keybindingsText += renderSection(genTitle, genBindings)
+		// Header
+		centered := lipgloss.NewStyle().Width(totalWidth).Align(lipgloss.Center)
+		versionLine := fmt.Sprintf("ot v%s (%s)", strings.TrimSpace(version), sha)
+		header := aboutStyle.Render(centered.Render(versionLine)) + "\n"
+		header += dimStyle.Render(centered.Render("by elcuervo")) + "\n\n"
 
-		aboutText := aboutStyle.Render(centered.Render(versionLine) + "\n" + centered.Render(creditLine))
+		// Footer
+		footer := "\n" + dimStyle.Render(centered.Render("esc to close"))
 
-		helpLine := "esc or q to close"
-		aboutHelp := helpStyle.Render(centered.Render(helpLine))
-
-		box := aboutBoxStyle.Render(aboutText + keybindingsText + "\n" + aboutHelp)
+		box := aboutBoxStyle.Render(header + columns + footer)
 
 		return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
 	}
