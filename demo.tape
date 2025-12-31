@@ -30,17 +30,6 @@ Sleep 400ms
 Type "kk"
 Sleep 400ms
 
-# === TOGGLING TASKS ===
-# Toggle a task with space (marks as done with date)
-Space
-Sleep 700ms
-
-# Move and toggle another task
-Down 2
-Sleep 300ms
-Space
-Sleep 700ms
-
 # === JUMP NAVIGATION ===
 # Jump to bottom with 'G'
 Type "G"
@@ -50,9 +39,22 @@ Sleep 500ms
 Type "g"
 Sleep 500ms
 
-# === INLINE EDITOR ===
+# === TOGGLING TASKS ===
+# Toggle a task with space (marks as done with date)
+Down
+Sleep 300ms
+Space
+Sleep 700ms
+
+# Move and toggle another task
+Down 2
+Sleep 300ms
+Space
+Sleep 700ms
+
+# === INLINE EDITING ===
 # Navigate to a task
-Down 3
+Down
 Sleep 300ms
 
 # Press 'e' to open edit popup
@@ -62,11 +64,32 @@ Sleep 700ms
 # Edit the description (add prefix)
 Ctrl+A
 Sleep 200ms
-Type "[PRIORITY] "
+Type "[URGENT] "
 Sleep 500ms
 
 # Save with Enter
 Enter
+Sleep 800ms
+
+# === DELETE TASK ===
+# Navigate to a task to delete
+Down 2
+Sleep 300ms
+
+# Press 'd' to open delete confirmation
+Type "d"
+Sleep 1200ms
+
+# Cancel deletion with 'n'
+Type "n"
+Sleep 500ms
+
+# Try delete again and confirm
+Type "d"
+Sleep 1200ms
+
+# Confirm deletion with 'y'
+Type "y"
 Sleep 800ms
 
 # === SEARCH FEATURE ===
@@ -92,24 +115,27 @@ Sleep 300ms
 Space
 Sleep 600ms
 
-# Exit search with Escape
-Escape
-Sleep 500ms
-
-# === SEARCH WITH LINKS ===
-# Search for tasks with links
-Type "/"
-Sleep 400ms
-Type "tutorial"
+# Edit from search results
+Type "e"
 Sleep 600ms
 
-# Navigate to results (shows clickable links)
-Enter
-Sleep 500ms
-Down
+# Add tag to task
+Ctrl+E
+Sleep 200ms
+Type " #done"
 Sleep 400ms
+Enter
+Sleep 600ms
 
-# Exit search
+# Delete from search results
+Down
+Sleep 300ms
+Type "d"
+Sleep 600ms
+Type "y"
+Sleep 600ms
+
+# Exit search with Escape
 Escape
 Sleep 500ms
 
@@ -120,10 +146,6 @@ Sleep 800ms
 
 # Show final state
 Type "g"
-Sleep 300ms
-Down 2
-Sleep 300ms
-Down 2
 Sleep 500ms
 
 # === QUIT ===
