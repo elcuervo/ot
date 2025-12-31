@@ -668,7 +668,7 @@ func (m model) View() string {
 		return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
 	}
 
-	titlePrefix := titleStyle.Render("ot - Tasks from ")
+	titlePrefix := titleStyle.Render("ot → ")
 	titleName := titleNameStyle.Render(m.titleName)
 	modeLabel := ""
 
