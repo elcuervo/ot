@@ -35,7 +35,7 @@
           pname = "ot";
           inherit version;
           src = ./.;
-          vendorHash = "sha256-KOlnzjPJv9OS1FvtVTxDEy/Vkiuww6Ts+kbnoKl8+w4=";
+          vendorHash = "sha256-N51t/7t0I9MaaZUPswoAJf5sah7TIC7gT6HRrvQXYYI=";
         };
       }
     );

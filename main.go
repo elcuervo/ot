@@ -8,14 +8,17 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/savioxavier/termlink"
 )
 
 //go:embed VERSION
@@ -38,6 +41,7 @@ var (
 	groupByFuncRe   = regexp.MustCompile(`group by function task\.file\.(\w+)`)
 	groupBySimpleRe = regexp.MustCompile(`group by (\w+)`)
 	dateFilterRe    = regexp.MustCompile(`(due|scheduled|done)\s+((?:today|tomorrow|yesterday)(?:\s+or\s+(?:today|tomorrow|yesterday))*|before\s+\S+|after\s+\S+|on\s+\S+(?:\s+or\s+\S+)*)`)
+	mdLinkRe        = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
 )
 
 // Task represents a single task from a markdown file
@@ -77,6 +81,35 @@ func (t *Task) updateRawLine() {
 	} else {
 		t.RawLine = fmt.Sprintf("%s[ ]%s", prefix, content)
 	}
+}
+
+// rebuildRawLine rebuilds the raw line with a new description
+func (t *Task) rebuildRawLine() {
+	matches := checkboxRe.FindStringSubmatch(t.RawLine)
+	if matches == nil {
+		return
+	}
+
+	prefix := matches[1] // "- " or "  - " etc
+	checkbox := "[ ]"
+	if t.Done {
+		checkbox = "[x]"
+	}
+
+	t.RawLine = fmt.Sprintf("%s%s %s", prefix, checkbox, t.Description)
+}
+
+// renderWithLinks converts markdown links [text](url) to clickable terminal hyperlinks
+func renderWithLinks(text string) string {
+	return mdLinkRe.ReplaceAllStringFunc(text, func(match string) string {
+		parts := mdLinkRe.FindStringSubmatch(match)
+		if len(parts) == 3 {
+			linkText := parts[1]
+			url := parts[2]
+			return termlink.Link(linkText, url)
+		}
+		return match
+	})
 }
 
 // scanVault recursively finds all .md files in a directory
@@ -178,14 +211,16 @@ type Config struct {
 }
 
 type Profile struct {
-	Vault string `toml:"vault"`
-	Query string `toml:"query"`
+	Vault  string `toml:"vault"`
+	Query  string `toml:"query"`
+	Editor string `toml:"editor"` // "external" or "inline", defaults to external
 }
 
 type ResolvedProfile struct {
-	Name      string
-	VaultPath string
-	QueryPath string
+	Name       string
+	VaultPath  string
+	QueryPath  string
+	EditorMode string // "external" or "inline"
 }
 
 type ProfileError struct {
@@ -317,7 +352,7 @@ func resolveProfilePaths(name string, p Profile) (*ResolvedProfile, error) {
 
 	queryPath = filepath.Clean(queryPath)
 
-	return &ResolvedProfile{Name: name, VaultPath: vaultPath, QueryPath: queryPath}, nil
+	return &ResolvedProfile{Name: name, VaultPath: vaultPath, QueryPath: queryPath, EditorMode: p.Editor}, nil
 }
 
 // parseQueryFile checks if the query file contains "not done" filter (simple version)
@@ -774,6 +809,58 @@ func saveTask(task *Task) error {
 	return os.Rename(tempPath, task.FilePath)
 }
 
+// startEdit initiates editing for a task - either external or inline based on config
+func (m *model) startEdit(task *Task) tea.Cmd {
+	// Check if we should use inline editor
+	useInline := m.editorMode == "inline"
+
+	// If not explicitly set to inline, check if $EDITOR is available
+	if !useInline && m.editorMode != "external" {
+		// Default behavior: use external if $EDITOR is set, otherwise inline
+		if os.Getenv("EDITOR") == "" {
+			useInline = true
+		}
+	}
+
+	if useInline {
+		// Enter inline edit mode - only edit the description
+		m.editing = true
+		m.editingTask = task
+		m.textInput = textinput.New()
+		m.textInput.SetValue(task.Description)
+		m.textInput.Focus()
+		m.textInput.CursorEnd()
+		m.textInput.CharLimit = 500
+		return nil
+	}
+
+	// Use external editor
+	return openInEditor(task)
+}
+
+// openInEditor opens the task file in an external editor at the correct line
+func openInEditor(task *Task) tea.Cmd {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vi" // fallback
+	}
+
+	// Build command with line number argument
+	// Most editors support +LINE syntax (vim, nvim, nano, emacs, code, etc.)
+	lineArg := fmt.Sprintf("+%d", task.LineNumber)
+	c := exec.Command(editor, lineArg, task.FilePath)
+
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		return editorFinishedMsg{err: err, task: task}
+	})
+}
+
+// editorFinishedMsg is sent when the external editor closes
+type editorFinishedMsg struct {
+	err  error
+	task *Task
+}
+
 // QuerySection represents a section with its query and results
 type QuerySection struct {
 	Name   string      // Section name (from ## header)
@@ -804,9 +891,15 @@ type model struct {
 	filteredTasks    []*Task          // Tasks matching search query
 	taskToSection    map[*Task]string // Map task to its section name for search
 	taskToGroup      map[*Task]string // Map task to its group name for search
+
+	// Editor state
+	editorMode  string          // "external" or "inline" from config
+	editing     bool            // Whether inline edit mode is active
+	editingTask *Task           // Task being edited inline
+	textInput   textinput.Model // Text input component for inline editing
 }
 
-func newModel(sections []QuerySection, vaultPath string, titleName string, queryFile string, queries []*Query) model {
+func newModel(sections []QuerySection, vaultPath string, titleName string, queryFile string, queries []*Query, editorMode string) model {
 	// Build flat task list from all sections and task-to-section/group maps
 	var tasks []*Task
 	taskToSection := make(map[*Task]string)
@@ -832,6 +925,7 @@ func newModel(sections []QuerySection, vaultPath string, titleName string, query
 		windowWidth:   defaultWindowWidth,
 		taskToSection: taskToSection,
 		taskToGroup:   taskToGroup,
+		editorMode:    editorMode,
 	}
 }
 
@@ -983,6 +1077,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.windowHeight = msg.Height
 		m.windowWidth = msg.Width
 
+	case editorFinishedMsg:
+		// External editor closed - refresh to pick up any changes
+		if msg.err != nil {
+			m.err = msg.err
+		}
+		m.refresh()
+		return m, nil
+
 	case tea.KeyMsg:
 		if m.aboutOpen {
 			switch msg.String() {
@@ -994,6 +1096,44 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			return m, nil
+		}
+
+		// Handle inline edit mode
+		if m.editing {
+			switch msg.String() {
+			case "esc", "ctrl+[":
+				// Cancel edit
+				m.editing = false
+				m.editingTask = nil
+				return m, nil
+
+			case "enter":
+				// Save edit - update description and rebuild raw line
+				newValue := m.textInput.Value()
+				if m.editingTask != nil && newValue != m.editingTask.Description {
+					m.editingTask.Description = newValue
+					m.editingTask.Modified = true
+					// Rebuild raw line with new description
+					m.editingTask.rebuildRawLine()
+					if err := saveTask(m.editingTask); err != nil {
+						m.err = err
+					}
+				}
+				m.editing = false
+				m.editingTask = nil
+				m.refresh()
+				return m, nil
+
+			case "ctrl+c":
+				m.quitting = true
+				return m, tea.Quit
+
+			default:
+				// Delegate all other keys to the textinput component
+				var cmd tea.Cmd
+				m.textInput, cmd = m.textInput.Update(msg)
+				return m, cmd
+			}
 		}
 
 		if msg.String() == "?" {
@@ -1046,6 +1186,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if err := saveTask(task); err != nil {
 							m.err = err
 						}
+					}
+					return m, nil
+
+				case "e":
+					// Edit task
+					tasks := m.activeTasks()
+					if len(tasks) > 0 && m.cursor < len(tasks) {
+						task := tasks[m.cursor]
+						return m, m.startEdit(task)
 					}
 					return m, nil
 				}
@@ -1149,6 +1298,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "r":
 			m.refresh()
+
+		case "e":
+			// Edit task
+			if len(m.tasks) > 0 {
+				task := m.tasks[m.cursor]
+				return m, m.startEdit(task)
+			}
 		}
 	}
 
@@ -1263,6 +1419,39 @@ func (m model) View() string {
 		return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
 	}
 
+	// Edit popup (centered modal)
+	if m.editing && m.editingTask != nil {
+		titleLine := aboutStyle.Render("Edit Task")
+
+		// Build the input line with checkbox prefix
+		checkbox := "[ ] "
+		if m.editingTask.Done {
+			checkbox = "[x] "
+		}
+
+		// Calculate box width - use most of window but cap it
+		maxWidth := m.windowWidth - 10
+		if maxWidth > 70 {
+			maxWidth = 70
+		}
+		if maxWidth < 30 {
+			maxWidth = 30
+		}
+
+		// Set textinput width to fit in the box
+		m.textInput.Width = maxWidth - 6 // Account for checkbox and padding
+
+		inputLine := checkbox + m.textInput.View()
+
+		helpLine := "enter save • esc cancel"
+
+		editContent := titleLine + "\n\n" + inputLine
+		editHelp := helpStyle.Render(helpLine)
+		box := aboutBoxStyle.Render(editContent + "\n\n" + editHelp)
+
+		return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
+	}
+
 	// Title
 	titlePrefix := titleStyle.Render("ot - Tasks from ")
 	titleName := titleNameStyle.Render(m.titleName)
@@ -1348,10 +1537,11 @@ func (m model) View() string {
 				fileInfo := fileStyle.Render(fmt.Sprintf(" (%s:%d)", relPath(m.vaultPath, task.FilePath), task.LineNumber))
 
 				var line string
+				desc := renderWithLinks(task.Description)
 				if task.Done {
-					line = doneStyle.Render(fmt.Sprintf("%s %s", checkbox, task.Description))
+					line = doneStyle.Render(fmt.Sprintf("%s %s", checkbox, desc))
 				} else {
-					line = fmt.Sprintf("%s %s", checkbox, task.Description)
+					line = fmt.Sprintf("%s %s", checkbox, desc)
 				}
 
 				if m.cursor == i {
@@ -1387,7 +1577,7 @@ func (m model) View() string {
 			// Search mode help - different text for typing vs navigating
 			var helpText string
 			if m.searchNavigating {
-				helpText = "↑/k up • ↓/j down • enter/space toggle • backspace edit • esc/q exit • ? about"
+				helpText = "↑/k up • ↓/j down • enter/space toggle • e edit • backspace edit query • esc/q exit • ? about"
 			} else {
 				helpText = "type to search • ↑/↓ navigate • enter select • esc cancel • ? about"
 			}
@@ -1478,11 +1668,12 @@ func (m model) View() string {
 
 					// Format line
 					var line string
+					desc := renderWithLinks(task.Description)
 
 					if task.Done {
-						line = doneStyle.Render(fmt.Sprintf("%s %s", checkbox, task.Description))
+						line = doneStyle.Render(fmt.Sprintf("%s %s", checkbox, desc))
 					} else {
-						line = fmt.Sprintf("%s %s", checkbox, task.Description)
+						line = fmt.Sprintf("%s %s", checkbox, desc)
 					}
 
 					// Highlight if selected
@@ -1536,7 +1727,7 @@ func (m model) View() string {
 		}
 
 		// Build help line with scroll indicator on the right
-		helpText := "↑/k up • ↓/j down • space/enter toggle • / search • r refresh • q quit • ? about"
+		helpText := "↑/k up • ↓/j down • space/enter toggle • e edit • / search • r refresh • q quit • ? about"
 
 		if totalRenderedLines > visibleHeight {
 			scrollInfo := fmt.Sprintf("[%d-%d of %d]", startLine+1, endLine, len(lines))
@@ -1553,7 +1744,7 @@ func (m model) View() string {
 
 	if len(m.tasks) == 0 {
 		// Help for empty state
-		help := helpStyle.Render("↑/k up • ↓/j down • space/enter toggle • / search • r refresh • q quit • ? about")
+		help := helpStyle.Render("↑/k up • ↓/j down • space/enter toggle • e edit • / search • r refresh • q quit • ? about")
 		b.WriteString("\n" + help)
 	}
 
@@ -1711,7 +1902,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var resolvedVault, queryFile, titleName string
+	var resolvedVault, queryFile, titleName, editorMode string
 
 	// Try profile-based resolution
 	name, profile, err := selectProfile(*profileName, cfg)
@@ -1732,6 +1923,7 @@ func main() {
 		resolvedVault = resolved.VaultPath
 		queryFile = resolved.QueryPath
 		titleName = name
+		editorMode = resolved.EditorMode
 	}
 
 	// CLI overrides
@@ -1881,7 +2073,7 @@ func main() {
 	}
 
 	// Run TUI
-	p := tea.NewProgram(newModel(sections, resolvedVault, titleName, queryFile, queries), tea.WithAltScreen())
+	p := tea.NewProgram(newModel(sections, resolvedVault, titleName, queryFile, queries, editorMode), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running TUI: %v\n", err)
 		os.Exit(1)

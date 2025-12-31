@@ -2,7 +2,7 @@
 
 CLI tool to interact with [Obsidian Tasks](https://publish.obsidian.md/tasks/Introduction)
 
-![VHS](https://vhs.charm.sh/vhs-3owqLj2zbZZTR93dPv4AZY.gif)
+![VHS](https://vhs.charm.sh/vhs-3MzRQhh867y1YFWsilL3Ot.gif)
 
 ## Install
 
@@ -44,10 +44,31 @@ ot --version
 |-----|--------|
 | `j` / `k` or arrows | Navigate up/down |
 | `g` / `G` | Jump to top/bottom |
-| `space` / `enter` | Toggle task |
+| `space` / `enter` / `x` | Toggle task |
+| `e` | Edit task |
 | `/` | Search tasks |
 | `r` | Refresh |
 | `q` | Quit |
+
+## Features
+
+### Inline Editor
+
+Press `e` to edit a task's description in a popup.
+
+- `Enter` to save
+- `Esc` to cancel
+
+### External Editor
+
+Set the `editor` option in your config to `"external"` (or leave it unset with `$EDITOR` defined)
+
+```toml
+[profiles.work]
+vault = "Obsidian"
+query = "queries/tasks.md"
+editor = "external"  # or "inline" (default if $EDITOR is not set)
+```
 
 ### Search
 
@@ -66,6 +87,7 @@ default_profile = "work"
 [profiles.work]
 vault = "Obsidian"
 query = "queries/tasks.md"
+editor = "inline"  # "inline" or "external"
 ```
 
 Usage with profiles:
