@@ -8,5 +8,6 @@
 
 ## Learning
 
-- [ ] Read Go generics tutorial
-- [ ] Watch Bubble Tea video 📅 2025-01-02
+- [ ] Read [Go generics tutorial](https://go.dev/doc/tutorial/generics)
+- [ ] Watch [Bubble Tea video](https://www.youtube.com/watch?v=dQw4w9WgXcQ) 📅 2025-01-02
+- [ ] Check out [ot on GitHub](https://github.com/elcuervo/ot)
