@@ -9,145 +9,105 @@ Set Width 1200
 Set Height 800
 Set Padding 20
 
-# Start the app with vault and query file
+# Start the app
 Type "ot --vault ./examples/vault ./examples/query.md"
 Sleep 500ms
 Enter
-Sleep 1.5s
+Sleep 2s
 
 # === NAVIGATION ===
-# Navigate down through tasks with arrow keys
+# Scroll through the task list
 Down
-Sleep 300ms
+Sleep 400ms
 Down
-Sleep 300ms
+Sleep 400ms
 Down
-Sleep 300ms
+Sleep 400ms
 
-# Navigate using vim keys (j/k)
+# Vim-style navigation
 Type "jj"
-Sleep 400ms
+Sleep 500ms
 Type "kk"
-Sleep 400ms
+Sleep 500ms
 
-# === JUMP NAVIGATION ===
-# Jump to bottom with 'G'
+# Jump to end and back
 Type "G"
-Sleep 500ms
-
-# Jump to top with 'g'
+Sleep 600ms
 Type "g"
-Sleep 500ms
+Sleep 600ms
 
-# === TOGGLING TASKS ===
-# Toggle a task with space (marks as done with date)
-Down
-Sleep 300ms
-Space
-Sleep 700ms
-
-# Move and toggle another task
-Down 2
-Sleep 300ms
-Space
-Sleep 700ms
-
-# === INLINE EDITING ===
-# Navigate to a task
+# === COMPLETE A TASK ===
+# Navigate to "Morning standup"
 Down
 Sleep 300ms
 
-# Press 'e' to open edit popup
+# Mark it done with space
+Space
+Sleep 1s
+
+# === EDIT A TASK ===
+# Navigate to "Call dentist"
+Down
+Sleep 300ms
+Down
+Sleep 300ms
+
+# Open edit modal
 Type "e"
-Sleep 700ms
-
-# Edit the description (add prefix)
-Ctrl+A
-Sleep 200ms
-Type "[URGENT] "
-Sleep 500ms
-
-# Save with Enter
-Enter
 Sleep 800ms
 
-# === DELETE TASK ===
-# Navigate to a task to delete
-Down 2
+# Add priority tag
+Ctrl+E
+Sleep 200ms
+Type " #urgent"
+Sleep 500ms
+
+# Save
+Enter
+Sleep 1s
+
+# === DELETE A TASK ===
+# Navigate down to a task
+Down
 Sleep 300ms
 
-# Press 'd' to open delete confirmation
+# Show delete confirmation
 Type "d"
-Sleep 1200ms
+Sleep 1.2s
 
-# Cancel deletion with 'n'
+# Cancel with 'n'
 Type "n"
-Sleep 500ms
+Sleep 600ms
 
-# Try delete again and confirm
-Type "d"
-Sleep 1200ms
-
-# Confirm deletion with 'y'
-Type "y"
-Sleep 800ms
-
-# === SEARCH FEATURE ===
-# Enter search mode with '/'
+# === SEARCH ===
+# Open search
 Type "/"
 Sleep 500ms
 
-# Search for "report"
-Type "report"
-Sleep 600ms
-
-# Press Enter to navigate results
-Enter
-Sleep 400ms
-
-# Navigate through search results
-Down
-Sleep 300ms
-Up
-Sleep 300ms
-
-# Toggle a task from search results
-Space
-Sleep 600ms
-
-# Edit from search results
-Type "e"
-Sleep 600ms
-
-# Add tag to task
-Ctrl+E
-Sleep 200ms
-Type " #done"
-Sleep 400ms
-Enter
-Sleep 600ms
-
-# Delete from search results
-Down
-Sleep 300ms
-Type "d"
-Sleep 600ms
-Type "y"
-Sleep 600ms
-
-# Exit search with Escape
-Escape
-Sleep 500ms
-
-# === REFRESH ===
-# Refresh the view with 'r'
-Type "r"
+# Search for tasks with links
+Type "Go"
 Sleep 800ms
 
-# Show final state
-Type "g"
+# Navigate results
+Enter
 Sleep 500ms
+
+# Toggle from search
+Space
+Sleep 800ms
+
+# Exit search
+Escape
+Sleep 600ms
+
+# === REFRESH ===
+Type "r"
+Sleep 1s
+
+# Back to top
+Type "g"
+Sleep 800ms
 
 # === QUIT ===
 Type "q"
-Sleep 300ms
+Sleep 500ms
