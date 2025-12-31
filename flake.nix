@@ -26,6 +26,7 @@
           shellHook = ''
             export GOPATH="$HOME/go"
             export PATH="$GOPATH/bin:$PATH"
+            export PATH="$PWD:$PATH"
             echo "ot development environment loaded"
             echo "Go version: $(go version)"
           '';
