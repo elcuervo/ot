@@ -1340,6 +1340,20 @@ var (
 				Background(lipgloss.Color("214")).
 				Padding(0, 1)
 
+	editModeStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("231")).
+			Background(lipgloss.Color("34")).
+			Padding(0, 1)
+
+	editInputStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("231")).
+			Background(lipgloss.Color("236"))
+
+	editCursorStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("231")).
+			Background(lipgloss.Color("212"))
+
 	aboutStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("white"))
@@ -1431,7 +1445,9 @@ func (m model) View() string {
 	titleName := titleNameStyle.Render(m.titleName)
 	modeLabel := ""
 
-	if m.searching {
+	if m.editing {
+		modeLabel = editModeStyle.Render("edit")
+	} else if m.searching {
 		if m.searchNavigating {
 			modeLabel = resultsModeStyle.Render("results")
 		} else {
@@ -1457,6 +1473,16 @@ func (m model) View() string {
 			cursorChar := searchStyle.Render("_")
 			b.WriteString(searchLabel + searchInput + cursorChar + "\n")
 		}
+	} else if m.editing {
+		// Show edit bar
+		b.WriteString(editInputStyle.Render(m.editInput[:m.editCursor]))
+		if m.editCursor < len(m.editInput) {
+			b.WriteString(editCursorStyle.Render(string(m.editInput[m.editCursor])))
+			b.WriteString(editInputStyle.Render(m.editInput[m.editCursor+1:]))
+		} else {
+			b.WriteString(editCursorStyle.Render(" "))
+		}
+		b.WriteString("\n")
 	} else {
 		b.WriteString("\n")
 	}
@@ -1550,7 +1576,7 @@ func (m model) View() string {
 			// Search mode help - different text for typing vs navigating
 			var helpText string
 			if m.searchNavigating {
-				helpText = "↑/k up • ↓/j down • enter/space toggle • backspace edit • esc/q exit • ? about"
+				helpText = "↑/k up • ↓/j down • enter/space toggle • e edit • backspace edit query • esc/q exit • ? about"
 			} else {
 				helpText = "type to search • ↑/↓ navigate • enter select • esc cancel • ? about"
 			}
@@ -1699,7 +1725,7 @@ func (m model) View() string {
 		}
 
 		// Build help line with scroll indicator on the right
-		helpText := "↑/k up • ↓/j down • space/enter toggle • / search • r refresh • q quit • ? about"
+		helpText := "↑/k up • ↓/j down • space/enter toggle • e edit • / search • r refresh • q quit • ? about"
 
 		if totalRenderedLines > visibleHeight {
 			scrollInfo := fmt.Sprintf("[%d-%d of %d]", startLine+1, endLine, len(lines))
@@ -1716,7 +1742,7 @@ func (m model) View() string {
 
 	if len(m.tasks) == 0 {
 		// Help for empty state
-		help := helpStyle.Render("↑/k up • ↓/j down • space/enter toggle • / search • r refresh • q quit • ? about")
+		help := helpStyle.Render("↑/k up • ↓/j down • space/enter toggle • e edit • / search • r refresh • q quit • ? about")
 		b.WriteString("\n" + help)
 	}
 
