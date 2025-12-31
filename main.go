@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -178,14 +179,16 @@ type Config struct {
 }
 
 type Profile struct {
-	Vault string `toml:"vault"`
-	Query string `toml:"query"`
+	Vault  string `toml:"vault"`
+	Query  string `toml:"query"`
+	Editor string `toml:"editor"` // "external" or "inline", defaults to external
 }
 
 type ResolvedProfile struct {
-	Name      string
-	VaultPath string
-	QueryPath string
+	Name       string
+	VaultPath  string
+	QueryPath  string
+	EditorMode string // "external" or "inline"
 }
 
 type ProfileError struct {
@@ -317,7 +320,7 @@ func resolveProfilePaths(name string, p Profile) (*ResolvedProfile, error) {
 
 	queryPath = filepath.Clean(queryPath)
 
-	return &ResolvedProfile{Name: name, VaultPath: vaultPath, QueryPath: queryPath}, nil
+	return &ResolvedProfile{Name: name, VaultPath: vaultPath, QueryPath: queryPath, EditorMode: p.Editor}, nil
 }
 
 // parseQueryFile checks if the query file contains "not done" filter (simple version)
@@ -774,6 +777,55 @@ func saveTask(task *Task) error {
 	return os.Rename(tempPath, task.FilePath)
 }
 
+// startEdit initiates editing for a task - either external or inline based on config
+func (m *model) startEdit(task *Task) tea.Cmd {
+	// Check if we should use inline editor
+	useInline := m.editorMode == "inline"
+
+	// If not explicitly set to inline, check if $EDITOR is available
+	if !useInline && m.editorMode != "external" {
+		// Default behavior: use external if $EDITOR is set, otherwise inline
+		if os.Getenv("EDITOR") == "" {
+			useInline = true
+		}
+	}
+
+	if useInline {
+		// Enter inline edit mode
+		m.editing = true
+		m.editingTask = task
+		m.editInput = task.RawLine
+		m.editCursor = len(task.RawLine)
+		return nil
+	}
+
+	// Use external editor
+	return openInEditor(task)
+}
+
+// openInEditor opens the task file in an external editor at the correct line
+func openInEditor(task *Task) tea.Cmd {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vi" // fallback
+	}
+
+	// Build command with line number argument
+	// Most editors support +LINE syntax (vim, nvim, nano, emacs, code, etc.)
+	lineArg := fmt.Sprintf("+%d", task.LineNumber)
+	c := exec.Command(editor, lineArg, task.FilePath)
+
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		return editorFinishedMsg{err: err, task: task}
+	})
+}
+
+// editorFinishedMsg is sent when the external editor closes
+type editorFinishedMsg struct {
+	err  error
+	task *Task
+}
+
 // QuerySection represents a section with its query and results
 type QuerySection struct {
 	Name   string      // Section name (from ## header)
@@ -804,9 +856,16 @@ type model struct {
 	filteredTasks    []*Task          // Tasks matching search query
 	taskToSection    map[*Task]string // Map task to its section name for search
 	taskToGroup      map[*Task]string // Map task to its group name for search
+
+	// Editor state
+	editorMode  string // "external" or "inline" from config
+	editing     bool   // Whether inline edit mode is active
+	editingTask *Task  // Task being edited inline
+	editInput   string // Current edit buffer
+	editCursor  int    // Cursor position in edit buffer
 }
 
-func newModel(sections []QuerySection, vaultPath string, titleName string, queryFile string, queries []*Query) model {
+func newModel(sections []QuerySection, vaultPath string, titleName string, queryFile string, queries []*Query, editorMode string) model {
 	// Build flat task list from all sections and task-to-section/group maps
 	var tasks []*Task
 	taskToSection := make(map[*Task]string)
@@ -832,6 +891,7 @@ func newModel(sections []QuerySection, vaultPath string, titleName string, query
 		windowWidth:   defaultWindowWidth,
 		taskToSection: taskToSection,
 		taskToGroup:   taskToGroup,
+		editorMode:    editorMode,
 	}
 }
 
@@ -983,6 +1043,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.windowHeight = msg.Height
 		m.windowWidth = msg.Width
 
+	case editorFinishedMsg:
+		// External editor closed - refresh to pick up any changes
+		if msg.err != nil {
+			m.err = msg.err
+		}
+		m.refresh()
+		return m, nil
+
 	case tea.KeyMsg:
 		if m.aboutOpen {
 			switch msg.String() {
@@ -994,6 +1062,85 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			return m, nil
+		}
+
+		// Handle inline edit mode
+		if m.editing {
+			switch msg.String() {
+			case "esc", "ctrl+[":
+				// Cancel edit
+				m.editing = false
+				m.editingTask = nil
+				m.editInput = ""
+				m.editCursor = 0
+				return m, nil
+
+			case "enter":
+				// Save edit
+				if m.editingTask != nil && m.editInput != m.editingTask.RawLine {
+					m.editingTask.RawLine = m.editInput
+					m.editingTask.Modified = true
+					// Re-parse task state from the new raw line
+					if matches := taskRe.FindStringSubmatch(m.editInput); matches != nil {
+						m.editingTask.Done = matches[1] == "x" || matches[1] == "X"
+						m.editingTask.Description = strings.TrimSpace(matches[2])
+					}
+					if err := saveTask(m.editingTask); err != nil {
+						m.err = err
+					}
+				}
+				m.editing = false
+				m.editingTask = nil
+				m.editInput = ""
+				m.editCursor = 0
+				m.refresh()
+				return m, nil
+
+			case "ctrl+c":
+				m.quitting = true
+				return m, tea.Quit
+
+			case "backspace":
+				if m.editCursor > 0 {
+					m.editInput = m.editInput[:m.editCursor-1] + m.editInput[m.editCursor:]
+					m.editCursor--
+				}
+				return m, nil
+
+			case "delete":
+				if m.editCursor < len(m.editInput) {
+					m.editInput = m.editInput[:m.editCursor] + m.editInput[m.editCursor+1:]
+				}
+				return m, nil
+
+			case "left":
+				if m.editCursor > 0 {
+					m.editCursor--
+				}
+				return m, nil
+
+			case "right":
+				if m.editCursor < len(m.editInput) {
+					m.editCursor++
+				}
+				return m, nil
+
+			case "home", "ctrl+a":
+				m.editCursor = 0
+				return m, nil
+
+			case "end", "ctrl+e":
+				m.editCursor = len(m.editInput)
+				return m, nil
+
+			default:
+				// Insert character at cursor position
+				if len(msg.String()) == 1 {
+					m.editInput = m.editInput[:m.editCursor] + msg.String() + m.editInput[m.editCursor:]
+					m.editCursor++
+				}
+				return m, nil
+			}
 		}
 
 		if msg.String() == "?" {
@@ -1046,6 +1193,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if err := saveTask(task); err != nil {
 							m.err = err
 						}
+					}
+					return m, nil
+
+				case "e":
+					// Edit task
+					tasks := m.activeTasks()
+					if len(tasks) > 0 && m.cursor < len(tasks) {
+						task := tasks[m.cursor]
+						return m, m.startEdit(task)
 					}
 					return m, nil
 				}
@@ -1149,6 +1305,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "r":
 			m.refresh()
+
+		case "e":
+			// Edit task
+			if len(m.tasks) > 0 {
+				task := m.tasks[m.cursor]
+				return m, m.startEdit(task)
+			}
 		}
 	}
 
@@ -1711,7 +1874,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var resolvedVault, queryFile, titleName string
+	var resolvedVault, queryFile, titleName, editorMode string
 
 	// Try profile-based resolution
 	name, profile, err := selectProfile(*profileName, cfg)
@@ -1732,6 +1895,7 @@ func main() {
 		resolvedVault = resolved.VaultPath
 		queryFile = resolved.QueryPath
 		titleName = name
+		editorMode = resolved.EditorMode
 	}
 
 	// CLI overrides
@@ -1881,7 +2045,7 @@ func main() {
 	}
 
 	// Run TUI
-	p := tea.NewProgram(newModel(sections, resolvedVault, titleName, queryFile, queries), tea.WithAltScreen())
+	p := tea.NewProgram(newModel(sections, resolvedVault, titleName, queryFile, queries, editorMode), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running TUI: %v\n", err)
 		os.Exit(1)
