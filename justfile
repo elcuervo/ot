@@ -37,7 +37,7 @@ vet:
 lint: fmt vet
 
 demo: build
-  ./ot --vault ./examples/vault ./examples/query.md
+  ot --vault ./examples/vault ./examples/query.md
 
 gif:
   vhs -p demo.tape
