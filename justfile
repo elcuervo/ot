@@ -19,6 +19,7 @@ install:
 
 nix-install:
     nix profile remove ot 2>/dev/null || true
+    nix store gc
     nix profile add .# --refresh
 
 tag version:
