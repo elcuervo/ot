@@ -16,106 +16,116 @@ Enter
 Sleep 1.5s
 
 # === NAVIGATION ===
-# Navigate through sections using arrow keys
-Down 3
-Sleep 400ms
+# Navigate down through tasks with arrow keys
 Down
-Sleep 400ms
+Sleep 300ms
 Down
-Sleep 400ms
+Sleep 300ms
+Down
+Sleep 300ms
 
 # Navigate using vim keys (j/k)
-Type "j"
-Sleep 300ms
-Type "j"
-Sleep 300ms
-Type "j"
-Sleep 300ms
-Type "k"
-Sleep 300ms
-Type "k"
-Sleep 500ms
+Type "jj"
+Sleep 400ms
+Type "kk"
+Sleep 400ms
 
 # === TOGGLING TASKS ===
-# Toggle a task with space
+# Toggle a task with space (marks as done with date)
 Space
-Sleep 800ms
+Sleep 700ms
 
-# Move down and toggle another
+# Move and toggle another task
 Down 2
-Sleep 400ms
+Sleep 300ms
 Space
-Sleep 800ms
+Sleep 700ms
 
 # === JUMP NAVIGATION ===
-# Jump to top with 'g'
-Type "g"
-Sleep 600ms
-
 # Jump to bottom with 'G'
 Type "G"
-Sleep 600ms
+Sleep 500ms
 
-# Back to middle
-Up 5
-Sleep 400ms
+# Jump to top with 'g'
+Type "g"
+Sleep 500ms
+
+# === INLINE EDITOR ===
+# Navigate to a task
+Down 3
+Sleep 300ms
+
+# Press 'e' to open edit popup
+Type "e"
+Sleep 700ms
+
+# Edit the description (add prefix)
+Ctrl+A
+Sleep 200ms
+Type "[PRIORITY] "
+Sleep 500ms
+
+# Save with Enter
+Enter
+Sleep 800ms
 
 # === SEARCH FEATURE ===
 # Enter search mode with '/'
 Type "/"
-Sleep 600ms
-
-# Type search query
-Type "report"
-Sleep 800ms
-
-# Navigate search results with Enter
-Enter
 Sleep 500ms
 
-# Move through results
-Down
-Sleep 400ms
-Up
+# Search for "report"
+Type "report"
+Sleep 600ms
+
+# Press Enter to navigate results
+Enter
 Sleep 400ms
 
-# Toggle task in search mode
+# Navigate through search results
+Down
+Sleep 300ms
+Up
+Sleep 300ms
+
+# Toggle a task from search results
 Space
-Sleep 700ms
+Sleep 600ms
 
 # Exit search with Escape
 Escape
-Sleep 600ms
+Sleep 500ms
 
-# === SEARCH BY CATEGORY ===
-# Search for tasks by section name (shows →Upcoming indicator)
+# === SEARCH WITH LINKS ===
+# Search for tasks with links
 Type "/"
 Sleep 400ms
-Type "work"
-Sleep 800ms
-Enter
+Type "tutorial"
 Sleep 600ms
+
+# Navigate to results (shows clickable links)
+Enter
+Sleep 500ms
 Down
 Sleep 400ms
-Space
-Sleep 700ms
+
+# Exit search
 Escape
-Sleep 600ms
+Sleep 500ms
 
 # === REFRESH ===
 # Refresh the view with 'r'
 Type "r"
-Sleep 1s
+Sleep 800ms
 
-# Final navigation to show updated state
+# Show final state
 Type "g"
-Sleep 400ms
-Down 3
+Sleep 300ms
+Down 2
 Sleep 300ms
 Down 2
 Sleep 500ms
 
 # === QUIT ===
-# Exit the app
 Type "q"
 Sleep 300ms
