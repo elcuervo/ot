@@ -668,12 +668,6 @@ func (m model) View() string {
 				}
 
 				for _, task := range group.Tasks {
-					indent := ""
-
-					if section.Query.GroupBy != "" && group.Name != "" {
-						indent = "  "
-					}
-
 					cursor := "  "
 
 					if m.cursor == taskIndex {
@@ -697,7 +691,7 @@ func (m model) View() string {
 					}
 
 					lines = append(lines, viewLine{
-						content:   fmt.Sprintf("%s%s%s%s", indent, cursor, line, fileInfo),
+						content:   fmt.Sprintf("%s%s%s", cursor, line, fileInfo),
 						taskIndex: taskIndex,
 					})
 
