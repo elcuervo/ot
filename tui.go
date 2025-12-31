@@ -459,21 +459,49 @@ func (m model) View() string {
 	}
 
 	var b strings.Builder
+
 	if m.aboutOpen {
-		versionLine := fmt.Sprintf("ot %s", strings.TrimSpace(version))
-		creditLine := "created with ☠️ by elcuervo"
-		helpLine := "press esc or q to close"
-		contentWidth := lipgloss.Width(versionLine)
-		if width := lipgloss.Width(creditLine); width > contentWidth {
-			contentWidth = width
+		sha := strings.TrimSpace(buildSHA)
+
+		if sha == "" {
+			sha = "unknown"
 		}
-		if width := lipgloss.Width(helpLine); width > contentWidth {
-			contentWidth = width
+
+		versionLine := fmt.Sprintf("ot v%s (%s)", strings.TrimSpace(version), sha)
+		creditLine := "created with ☠️ by elcuervo\n"
+
+		keybindings := []string{
+			"↑/k ↓/j    navigate",
+			"g/G        first/last",
+			"space      toggle task",
+			"e          edit task",
+			"r          refresh",
+			"/          search",
+			"esc        exit search",
+			"?          toggle help",
+			"q          quit",
 		}
+
+		helpLine := "esc or q to close"
+		contentWidth := int(float64(m.windowWidth) * 0.8)
+
+		if contentWidth < 24 {
+			contentWidth = 24
+		}
+
 		centered := lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Center)
+		left := lipgloss.NewStyle().Width(contentWidth).Align(lipgloss.Left)
+
 		aboutText := aboutStyle.Render(centered.Render(versionLine) + "\n" + centered.Render(creditLine))
+
+		keybindingsText := "\n"
+
+		for _, line := range keybindings {
+			keybindingsText += left.Render(line) + "\n"
+		}
+
 		aboutHelp := helpStyle.Render(centered.Render(helpLine))
-		box := aboutBoxStyle.Render(aboutText + "\n" + aboutHelp)
+		box := aboutBoxStyle.Render(aboutText + keybindingsText + "\n" + aboutHelp)
 
 		return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
 	}
@@ -605,12 +633,7 @@ func (m model) View() string {
 				b.WriteString(lines[i].content + "\n")
 			}
 
-			var helpText string
-			if m.searchNavigating {
-				helpText = "↑/k up • ↓/j down • enter/space toggle • e edit • backspace edit query • esc/q exit • ? about"
-			} else {
-				helpText = "type to search • ↑/↓ navigate • enter select • esc cancel • ? about"
-			}
+			helpText := "? help"
 			matchInfo := fmt.Sprintf("[%d matches]", len(tasks))
 			padding := m.windowWidth - len(helpText) - len(matchInfo) - 1
 			if padding < 2 {
@@ -728,7 +751,7 @@ func (m model) View() string {
 			b.WriteString(lines[i].content + "\n")
 		}
 
-		helpText := "↑/k up • ↓/j down • space/enter toggle • e edit • / search • r refresh • q quit • ? about"
+		helpText := "? help"
 
 		if totalRenderedLines > visibleHeight {
 			scrollInfo := fmt.Sprintf("[%d-%d of %d]", startLine+1, endLine, len(lines))
@@ -743,7 +766,7 @@ func (m model) View() string {
 	}
 
 	if len(m.tasks) == 0 {
-		help := helpStyle.Render("↑/k up • ↓/j down • space/enter toggle • e edit • / search • r refresh • q quit • ? about")
+		help := helpStyle.Render("? help")
 		b.WriteString("\n" + help)
 	}
 
