@@ -33,9 +33,12 @@ nix profile install github:elcuervo/ot
 ## Usage
 
 ```bash
-ot --vault ~/obsidian-vault query.md
-ot --profile work
-ot --version
+ot ~/obsidian-vault              # Show 'not done' tasks from vault
+ot ~/vault -q 'due today'        # Inline query
+ot ~/vault -q queries/tasks.md   # Query file
+ot 'projects/*/todo.md'          # Glob pattern
+ot                               # Use default profile
+ot --profile work                # Use named profile
 ```
 
 ## Keybindings
@@ -45,9 +48,12 @@ ot --version
 | `j` / `k` or arrows | Navigate up/down |
 | `g` / `G` | Jump to top/bottom |
 | `space` / `enter` / `x` | Toggle task |
+| `a` / `n` | Add task after current |
 | `e` | Edit task |
+| `d` | Delete task |
 | `/` | Search tasks |
 | `r` | Refresh |
+| `?` | Help |
 | `q` | Quit |
 
 ## Features
@@ -90,13 +96,7 @@ query = "queries/tasks.md"
 editor = "inline"  # "inline" or "external"
 ```
 
-Usage with profiles:
-
-```sh
-ot --profile work
-```
-
-If `default_profile` is set, you can run `ot` without arguments.
+If `default_profile` is set, run `ot` without arguments to use it.
 
 ## Query File
 
