@@ -858,3 +858,146 @@ func TestValidateConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestContainsGlob(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"simple/path", false},
+		{"path/to/file.md", false},
+		{"path/*/file.md", true},
+		{"path/**/file.md", true},
+		{"path/?.md", true},
+		{"path/[abc].md", true},
+		{"~/vault", false},
+		{"projects/*/todo.md", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			got := containsGlob(tt.path)
+			if got != tt.want {
+				t.Errorf("containsGlob(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveQuery(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a query file
+	queryFile := filepath.Join(tmpDir, "query.md")
+	os.WriteFile(queryFile, []byte("```tasks\nnot done\ndue today\n```\n"), 0644)
+
+	tests := []struct {
+		name      string
+		input     string
+		vaultPath string
+		wantLen   int
+		wantErr   bool
+	}{
+		{
+			name:      "inline query not done",
+			input:     "not done",
+			vaultPath: tmpDir,
+			wantLen:   1,
+			wantErr:   false,
+		},
+		{
+			name:      "inline query due today",
+			input:     "due today",
+			vaultPath: tmpDir,
+			wantLen:   1,
+			wantErr:   false,
+		},
+		{
+			name:      "query file path",
+			input:     queryFile,
+			vaultPath: tmpDir,
+			wantLen:   1,
+			wantErr:   false,
+		},
+		{
+			name:      "relative query file",
+			input:     "query.md",
+			vaultPath: tmpDir,
+			wantLen:   1,
+			wantErr:   false,
+		},
+		{
+			name:      "nonexistent file treated as inline",
+			input:     "nonexistent.md",
+			vaultPath: tmpDir,
+			wantLen:   1,
+			wantErr:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queries, err := resolveQuery(tt.input, tt.vaultPath)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("resolveQuery() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if len(queries) != tt.wantLen {
+				t.Errorf("resolveQuery() returned %d queries, want %d", len(queries), tt.wantLen)
+			}
+		})
+	}
+}
+
+func TestParseInlineQuery(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantNotDone bool
+		wantGroupBy string
+	}{
+		{
+			name:        "not done",
+			input:       "not done",
+			wantNotDone: true,
+			wantGroupBy: "",
+		},
+		{
+			name:        "due today",
+			input:       "due today",
+			wantNotDone: false,
+			wantGroupBy: "",
+		},
+		{
+			name:        "not done with group by",
+			input:       "not done\ngroup by folder",
+			wantNotDone: true,
+			wantGroupBy: "folder",
+		},
+		{
+			name:        "empty string",
+			input:       "",
+			wantNotDone: false,
+			wantGroupBy: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queries, err := parseInlineQuery(tt.input)
+			if err != nil {
+				t.Fatalf("parseInlineQuery() error = %v", err)
+			}
+			if len(queries) != 1 {
+				t.Fatalf("parseInlineQuery() returned %d queries, want 1", len(queries))
+			}
+			q := queries[0]
+			if q.NotDone != tt.wantNotDone {
+				t.Errorf("NotDone = %v, want %v", q.NotDone, tt.wantNotDone)
+			}
+			if q.GroupBy != tt.wantGroupBy {
+				t.Errorf("GroupBy = %q, want %q", q.GroupBy, tt.wantGroupBy)
+			}
+		})
+	}
+}
