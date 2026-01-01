@@ -15,6 +15,11 @@ import (
 var version string
 var buildSHA string
 
+// containsGlob checks if a path contains glob pattern characters
+func containsGlob(path string) bool {
+	return strings.ContainsAny(path, "*?[")
+}
+
 func main() {
 	vaultPath := flag.String("vault", "", "Path to Obsidian vault (deprecated, use positional arg)")
 	queryInput := flag.String("query", "", "Query file path or inline query string")
@@ -46,6 +51,7 @@ func main() {
 
 	var resolvedVault, queryFile, titleName, editorMode string
 	var queries []*Query
+	var globFiles []string // Files matched by glob pattern
 
 	// Get query from -q or --query flags
 	queryStr := *queryInput
@@ -53,8 +59,44 @@ func main() {
 		queryStr = *queryInputShort
 	}
 
-	// First positional arg is now vault path
-	if len(args) > 0 {
+	// Check if positional arg is a glob pattern
+	if len(args) > 0 && containsGlob(args[0]) {
+		expanded, err := expandPath(args[0])
+		if err != nil {
+			fmt.Printf("Error expanding glob pattern: %v\n", err)
+			os.Exit(1)
+		}
+
+		matches, err := filepath.Glob(expanded)
+		if err != nil {
+			fmt.Printf("Error parsing glob pattern: %v\n", err)
+			os.Exit(1)
+		}
+
+		if len(matches) == 0 {
+			fmt.Printf("No files match pattern: %s\n", args[0])
+			os.Exit(1)
+		}
+
+		// Filter to only .md files
+		for _, match := range matches {
+			if strings.HasSuffix(match, ".md") {
+				if info, err := os.Stat(match); err == nil && !info.IsDir() {
+					globFiles = append(globFiles, match)
+				}
+			}
+		}
+
+		if len(globFiles) == 0 {
+			fmt.Printf("No markdown files match pattern: %s\n", args[0])
+			os.Exit(1)
+		}
+
+		// Use current directory as base for relative paths
+		resolvedVault, _ = os.Getwd()
+		titleName = args[0] // Show the pattern in title
+	} else if len(args) > 0 {
+		// First positional arg is vault path (not a glob)
 		expanded, err := expandPath(args[0])
 
 		if err != nil {
@@ -117,6 +159,7 @@ func main() {
 	if resolvedVault == "" {
 		fmt.Println("Usage:")
 		fmt.Println("  ot <vault-path>                Show 'not done' tasks from vault")
+		fmt.Println("  ot <glob-pattern>              Show tasks from files matching pattern")
 		fmt.Println("  ot <vault-path> -q <query>     Query file or inline query string")
 		fmt.Println("  ot                             Use default profile from config")
 		fmt.Println("  ot --profile <name>            Use named profile from config")
@@ -139,6 +182,7 @@ func main() {
 		fmt.Println("  ot ~/obsidian-vault")
 		fmt.Println("  ot ~/vault -q 'due today'")
 		fmt.Println("  ot ~/vault -q queries/work.md")
+		fmt.Println("  ot 'projects/*/todo.md'")
 
 		if cfgPath != "" {
 			fmt.Println("\nConfig:")
@@ -168,11 +212,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	files, err := scanVault(resolvedVault)
-
-	if err != nil {
-		fmt.Printf("Error scanning vault: %v\n", err)
-		os.Exit(1)
+	// Get files to parse: from glob matches or vault scan
+	var files []string
+	if len(globFiles) > 0 {
+		files = globFiles
+	} else {
+		files, err = scanVault(resolvedVault)
+		if err != nil {
+			fmt.Printf("Error scanning vault: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	var allTasks []*Task
