@@ -16,7 +16,9 @@ var version string
 var buildSHA string
 
 func main() {
-	vaultPath := flag.String("vault", "", "Path to Obsidian vault")
+	vaultPath := flag.String("vault", "", "Path to Obsidian vault (deprecated, use positional arg)")
+	queryInput := flag.String("query", "", "Query file path or inline query string")
+	queryInputShort := flag.String("q", "", "Query file path or inline query string (short)")
 	listOnly := flag.Bool("list", false, "List tasks without TUI (non-interactive)")
 	profileName := flag.String("profile", "", "Profile name from config (optional)")
 	showVersion := flag.Bool("version", false, "Show version and exit")
@@ -43,28 +45,33 @@ func main() {
 	}
 
 	var resolvedVault, queryFile, titleName, editorMode string
+	var queries []*Query
 
-	name, profile, err := selectProfile(*profileName, cfg)
-
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+	// Get query from -q or --query flags
+	queryStr := *queryInput
+	if queryStr == "" {
+		queryStr = *queryInputShort
 	}
 
-	if profile != nil {
-		resolved, err := resolveProfilePaths(name, *profile)
+	// First positional arg is now vault path
+	if len(args) > 0 {
+		expanded, err := expandPath(args[0])
 
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
+			fmt.Printf("Error expanding vault path: %v\n", err)
 			os.Exit(1)
 		}
 
-		resolvedVault = resolved.VaultPath
-		queryFile = resolved.QueryPath
-		titleName = name
-		editorMode = resolved.EditorMode
+		resolvedVault = filepath.Clean(expanded)
+
+		if resolved, err := filepath.EvalSymlinks(resolvedVault); err == nil {
+			resolvedVault = resolved
+		}
+
+		titleName = filepath.Base(resolvedVault)
 	}
 
+	// --vault flag overrides positional (for backward compat)
 	if *vaultPath != "" {
 		expanded, err := expandPath(*vaultPath)
 
@@ -82,27 +89,43 @@ func main() {
 		titleName = filepath.Base(resolvedVault)
 	}
 
-	if len(args) > 0 {
-		expanded, err := expandPath(args[0])
+	// If no vault from args/flags, try profile
+	if resolvedVault == "" {
+		name, profile, err := selectProfile(*profileName, cfg)
 
 		if err != nil {
-			fmt.Printf("Error expanding query path: %v\n", err)
+			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)
 		}
 
-		queryFile = filepath.Clean(expanded)
+		if profile != nil {
+			resolved, err := resolveProfilePaths(name, *profile)
+
+			if err != nil {
+				fmt.Printf("Error: %v\n", err)
+				os.Exit(1)
+			}
+
+			resolvedVault = resolved.VaultPath
+			queryFile = resolved.QueryPath
+			titleName = name
+			editorMode = resolved.EditorMode
+		}
 	}
 
-	if titleName == "" && resolvedVault != "" {
-		titleName = filepath.Base(resolvedVault)
-	}
-
-	if queryFile == "" || resolvedVault == "" {
-		fmt.Println("Usage: ot <query-file.md> --vault <path>")
+	// Still no vault? Show help
+	if resolvedVault == "" {
+		fmt.Println("Usage:")
+		fmt.Println("  ot <vault-path>                Show 'not done' tasks from vault")
+		fmt.Println("  ot <vault-path> -q <query>     Query file or inline query string")
+		fmt.Println("  ot                             Use default profile from config")
+		fmt.Println("  ot --profile <name>            Use named profile from config")
 		fmt.Println("\nOptions:")
-		fmt.Println("  --vault <path>  Path to Obsidian vault (required)")
-		fmt.Println("  --list          List tasks without TUI")
-		fmt.Println("  --profile <name>  Use profile from config")
+		fmt.Println("  -q, --query <query>   Query file path or inline query string")
+		fmt.Println("  --vault <path>        Path to vault (deprecated, use positional arg)")
+		fmt.Println("  --profile <name>      Use profile from config")
+		fmt.Println("  --list                List tasks without TUI")
+		fmt.Println("  --version             Show version")
 		fmt.Println("\nSupported query filters:")
 		fmt.Println("  not done              Show only incomplete tasks")
 		fmt.Println("  due today             Tasks due today")
@@ -112,8 +135,10 @@ func main() {
 		fmt.Println("  group by folder       Group tasks by folder")
 		fmt.Println("  group by filename     Group tasks by filename")
 		fmt.Println("\nDate values: today, tomorrow, yesterday, or YYYY-MM-DD")
-		fmt.Println("\nExample:")
-		fmt.Println("  ot --vault ~/obsidian-vault query.md")
+		fmt.Println("\nExamples:")
+		fmt.Println("  ot ~/obsidian-vault")
+		fmt.Println("  ot ~/vault -q 'due today'")
+		fmt.Println("  ot ~/vault -q queries/work.md")
 
 		if cfgPath != "" {
 			fmt.Println("\nConfig:")
@@ -124,7 +149,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	queries, err := parseAllQueryBlocks(queryFile)
+	// Resolve query: from flag, from profile, or default to "not done"
+	if queryStr != "" {
+		queries, err = resolveQuery(queryStr, resolvedVault)
+		if err != nil {
+			fmt.Printf("Error resolving query: %v\n", err)
+			os.Exit(1)
+		}
+	} else if queryFile != "" {
+		queries, err = parseAllQueryBlocks(queryFile)
+	} else {
+		// Default: show "not done" tasks
+		queries = []*Query{{NotDone: true}}
+	}
 
 	if err != nil {
 		fmt.Printf("Error parsing query file: %v\n", err)

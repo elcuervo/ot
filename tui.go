@@ -138,13 +138,16 @@ func (m *model) activeTasks() []*Task {
 }
 
 func (m *model) refresh() {
-	queries, err := parseAllQueryBlocks(m.queryFile)
-	if err != nil {
-		m.err = err
-		return
+	// If we have a query file, re-parse it; otherwise reuse existing queries
+	if m.queryFile != "" {
+		queries, err := parseAllQueryBlocks(m.queryFile)
+		if err != nil {
+			m.err = err
+			return
+		}
+		m.queries = queries
 	}
-
-	m.queries = queries
+	// For inline queries, m.queries is already set and doesn't change
 
 	files, err := scanVault(m.vaultPath)
 

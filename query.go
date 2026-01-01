@@ -367,6 +367,41 @@ func relPath(basePath, filePath string) string {
 	return filePath
 }
 
+// resolveQuery determines if input is a file path or inline query string
+// and returns parsed queries accordingly
+func resolveQuery(input string, vaultPath string) ([]*Query, error) {
+	// Try to resolve as file path first
+	expanded, err := expandPath(input)
+	if err != nil {
+		// If expansion fails, treat as inline query
+		return parseInlineQuery(input)
+	}
+
+	// Determine file path (absolute or relative to vault)
+	var filePath string
+	if filepath.IsAbs(expanded) {
+		filePath = expanded
+	} else if vaultPath != "" {
+		filePath = filepath.Join(vaultPath, expanded)
+	} else {
+		filePath = expanded
+	}
+
+	// Check if file exists and is not a directory
+	if info, err := os.Stat(filePath); err == nil && !info.IsDir() {
+		return parseAllQueryBlocks(filePath)
+	}
+
+	// Not a file - treat as inline query
+	return parseInlineQuery(input)
+}
+
+// parseInlineQuery parses an inline query string like "not done" or "due today"
+func parseInlineQuery(queryStr string) ([]*Query, error) {
+	query := parseQueryContent(queryStr)
+	return []*Query{query}, nil
+}
+
 // Filter returns elements from slice that satisfy the predicate
 func Filter[T any](slice []T, predicate func(T) bool) []T {
 	var result []T
