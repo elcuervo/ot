@@ -19,7 +19,7 @@ install:
 
 nix-install:
   nix profile remove ot 2>/dev/null || true
-  nix profile install .#ot --refresh --no-substitute
+  nix profile add .#ot --refresh --no-substitute
 
 tag version:
   git tag "v{{version}}"

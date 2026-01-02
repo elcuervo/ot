@@ -16,6 +16,8 @@ const (
 	defaultWindowWidth  = 80
 	reservedUILines     = 5
 	minVisibleHeight    = 3
+	maxInputWidth       = 70
+	minInputWidth       = 30
 )
 
 // model is the BubbleTea model
@@ -142,12 +144,7 @@ func (m *model) filterBySearch() {
 
 	m.filteredTasks = filtered
 
-	if m.cursor >= len(filtered) {
-		m.cursor = len(filtered) - 1
-	}
-	if m.cursor < 0 {
-		m.cursor = 0
-	}
+	m.clampCursor(len(filtered))
 }
 
 func (m *model) activeTasks() []*Task {
@@ -303,24 +300,39 @@ func (m *model) refreshWithCache() {
 		m.filterBySearch()
 	}
 
-	if m.cursor >= len(m.tasks) {
-		m.cursor = len(m.tasks) - 1
+	m.clampCursor(len(m.tasks))
+}
+
+func (m *model) useInlineEditor() bool {
+	if m.editorMode == "inline" {
+		return true
 	}
-	if m.cursor < 0 {
-		m.cursor = 0
+	if m.editorMode == "external" {
+		return false
 	}
+	return os.Getenv("EDITOR") == ""
+}
+
+func (m *model) inputWidth() int {
+	return max(minInputWidth, min(maxInputWidth, m.windowWidth-10))
+}
+
+func (m *model) clampCursor(length int) {
+	m.cursor = max(0, min(m.cursor, length-1))
+}
+
+func (m *model) toggleAndSave(task *Task) {
+	task.Toggle()
+	if err := saveTask(task); err != nil {
+		m.err = err
+		return
+	}
+	m.selfModifiedFiles[task.FilePath] = time.Now()
+	m.recentlyToggled[taskKey(task)] = time.Now()
 }
 
 func (m *model) startEdit(task *Task) tea.Cmd {
-	useInline := m.editorMode == "inline"
-
-	if !useInline && m.editorMode != "external" {
-		if os.Getenv("EDITOR") == "" {
-			useInline = true
-		}
-	}
-
-	if useInline {
+	if m.useInlineEditor() {
 		m.editing = true
 		m.editingTask = task
 		m.textInput = textinput.New()
@@ -330,20 +342,11 @@ func (m *model) startEdit(task *Task) tea.Cmd {
 		m.textInput.CharLimit = 500
 		return nil
 	}
-
 	return openInEditor(task)
 }
 
 func (m *model) startAdd(refTask *Task) tea.Cmd {
-	useInline := m.editorMode == "inline"
-
-	if !useInline && m.editorMode != "external" {
-		if os.Getenv("EDITOR") == "" {
-			useInline = true
-		}
-	}
-
-	if useInline {
+	if m.useInlineEditor() {
 		m.adding = true
 		m.addingRef = refTask
 		m.addingInput = textinput.New()
@@ -352,7 +355,6 @@ func (m *model) startAdd(refTask *Task) tea.Cmd {
 		m.addingInput.CharLimit = 500
 		return nil
 	}
-
 	return openNewTaskInEditor(refTask)
 }
 
@@ -543,14 +545,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case "enter", " ", "x":
 					tasks := m.activeTasks()
 					if len(tasks) > 0 && m.cursor < len(tasks) {
-						task := tasks[m.cursor]
-						task.Toggle()
-						if err := saveTask(task); err != nil {
-							m.err = err
-						} else {
-							m.selfModifiedFiles[task.FilePath] = time.Now()
-							m.recentlyToggled[taskKey(task)] = time.Now()
-						}
+						m.toggleAndSave(tasks[m.cursor])
 					}
 					return m, nil
 
@@ -657,14 +652,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "enter", " ", "x":
 			if len(m.tasks) > 0 {
-				task := m.tasks[m.cursor]
-				task.Toggle()
-				if err := saveTask(task); err != nil {
-					m.err = err
-				} else {
-					m.selfModifiedFiles[task.FilePath] = time.Now()
-					m.recentlyToggled[taskKey(task)] = time.Now()
-				}
+				m.toggleAndSave(m.tasks[m.cursor])
 			}
 
 		case "g":
@@ -829,15 +817,7 @@ func (m model) View() string {
 			checkbox = "[x] "
 		}
 
-		maxWidth := m.windowWidth - 10
-		if maxWidth > 70 {
-			maxWidth = 70
-		}
-		if maxWidth < 30 {
-			maxWidth = 30
-		}
-
-		m.textInput.Width = maxWidth - 6
+		m.textInput.Width = m.inputWidth() - 6
 
 		inputLine := checkbox + m.textInput.View()
 
@@ -896,15 +876,7 @@ func (m model) View() string {
 
 		fileInfo := fileStyle.Render(fmt.Sprintf("Adding to: %s", relPath(m.vaultPath, m.addingRef.FilePath)))
 
-		maxWidth := m.windowWidth - 10
-		if maxWidth > 70 {
-			maxWidth = 70
-		}
-		if maxWidth < 30 {
-			maxWidth = 30
-		}
-
-		m.addingInput.Width = maxWidth - 6
+		m.addingInput.Width = m.inputWidth() - 6
 
 		inputLine := "[ ] " + m.addingInput.View()
 
