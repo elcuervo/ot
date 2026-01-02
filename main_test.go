@@ -391,6 +391,12 @@ func TestParseDueDate(t *testing.T) {
 			wantDate:    "2025-06-01",
 			wantNil:     false,
 		},
+		{
+			name:        "task with only completion date should have no due date",
+			description: "Completed task ✅ 2025-05-01",
+			wantDate:    "",
+			wantNil:     true,
+		},
 	}
 
 	for _, tt := range tests {

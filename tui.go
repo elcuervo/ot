@@ -202,15 +202,18 @@ func (m *model) undoLastToggle() {
 // filterTasksWithRecent applies query filters but keeps recently toggled tasks visible
 func (m *model) filterTasksWithRecent(allTasks []*Task, query *Query) []*Task {
 	return Filter(allTasks, func(task *Task) bool {
-		// Always show recently toggled tasks (for undo capability)
+		// Date filters always apply - a task must match the date criteria
+		// regardless of whether it was recently toggled
+		if len(query.DateFilters) > 0 && !matchAllDateFilters(task, query.DateFilters) {
+			return false
+		}
+		// Recently toggled tasks bypass the "not done" filter (for undo capability)
+		// but must still match date filters above
 		if m.isRecentlyToggled(task) {
 			return true
 		}
-		// Apply normal filtering
+		// Apply normal "not done" filtering
 		if query.NotDone && task.Done {
-			return false
-		}
-		if len(query.DateFilters) > 0 && !matchAllDateFilters(task, query.DateFilters) {
 			return false
 		}
 		return true
