@@ -48,6 +48,7 @@ ot --profile work                # Use named profile
 | `j` / `k` or arrows | Navigate up/down |
 | `g` / `G` | Jump to top/bottom |
 | `space` / `enter` / `x` | Toggle task |
+| `u` | Undo last toggle |
 | `a` / `n` | Add task after current |
 | `e` | Edit task |
 | `d` | Delete task |

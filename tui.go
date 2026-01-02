@@ -57,6 +57,10 @@ type model struct {
 	watcher           *Watcher
 	debouncer         *Debouncer
 	selfModifiedFiles map[string]time.Time
+
+	// Recently toggled tasks (kept visible for undo)
+	// Key is "filepath:lineNumber" to survive re-parsing
+	recentlyToggled map[string]time.Time
 }
 
 func newModel(sections []QuerySection, vaultPath string, titleName string, queryFile string, queries []*Query, editorMode string, cache *TaskCache, watcher *Watcher, debouncer *Debouncer) model {
@@ -89,6 +93,7 @@ func newModel(sections []QuerySection, vaultPath string, titleName string, query
 		watcher:           watcher,
 		debouncer:         debouncer,
 		selfModifiedFiles: make(map[string]time.Time),
+		recentlyToggled:   make(map[string]time.Time),
 	}
 }
 
@@ -152,6 +157,69 @@ func (m *model) activeTasks() []*Task {
 	return m.tasks
 }
 
+// taskKey returns a unique key for a task based on file path and line number
+func taskKey(task *Task) string {
+	return fmt.Sprintf("%s:%d", task.FilePath, task.LineNumber)
+}
+
+// isRecentlyToggled checks if a task was toggled within the session
+func (m *model) isRecentlyToggled(task *Task) bool {
+	_, ok := m.recentlyToggled[taskKey(task)]
+	return ok
+}
+
+// undoLastToggle finds the most recently toggled task and toggles it back
+func (m *model) undoLastToggle() {
+	if len(m.recentlyToggled) == 0 {
+		return
+	}
+
+	// Find the most recent toggle
+	var latestKey string
+	var latestTime time.Time
+	for key, t := range m.recentlyToggled {
+		if latestKey == "" || t.After(latestTime) {
+			latestKey = key
+			latestTime = t
+		}
+	}
+
+	// Find the task in current tasks list
+	for _, task := range m.tasks {
+		if taskKey(task) == latestKey {
+			task.Toggle()
+			if err := saveTask(task); err != nil {
+				m.err = err
+			} else {
+				m.selfModifiedFiles[task.FilePath] = time.Now()
+				delete(m.recentlyToggled, latestKey)
+			}
+			return
+		}
+	}
+
+	// Task not in current view, remove from recently toggled anyway
+	delete(m.recentlyToggled, latestKey)
+}
+
+// filterTasksWithRecent applies query filters but keeps recently toggled tasks visible
+func (m *model) filterTasksWithRecent(allTasks []*Task, query *Query) []*Task {
+	return Filter(allTasks, func(task *Task) bool {
+		// Always show recently toggled tasks (for undo capability)
+		if m.isRecentlyToggled(task) {
+			return true
+		}
+		// Apply normal filtering
+		if query.NotDone && task.Done {
+			return false
+		}
+		if len(query.DateFilters) > 0 && !matchAllDateFilters(task, query.DateFilters) {
+			return false
+		}
+		return true
+	})
+}
+
 func (m *model) refresh() {
 	m.refreshWithCache()
 }
@@ -202,7 +270,7 @@ func (m *model) refreshWithCache() {
 	var sections []QuerySection
 
 	for _, query := range m.queries {
-		filtered := filterTasks(allTasks, query)
+		filtered := m.filterTasksWithRecent(allTasks, query)
 		groups := groupTasks(filtered, query.GroupBy, m.vaultPath)
 
 		sections = append(sections, QuerySection{
@@ -481,6 +549,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.err = err
 						} else {
 							m.selfModifiedFiles[task.FilePath] = time.Now()
+							m.recentlyToggled[taskKey(task)] = time.Now()
 						}
 					}
 					return m, nil
@@ -507,6 +576,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						task := tasks[m.cursor]
 						return m, m.startAdd(task)
 					}
+					return m, nil
+
+				case "u":
+					m.undoLastToggle()
 					return m, nil
 				}
 				return m, nil
@@ -590,6 +663,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.err = err
 				} else {
 					m.selfModifiedFiles[task.FilePath] = time.Now()
+					m.recentlyToggled[taskKey(task)] = time.Now()
 				}
 			}
 
@@ -602,7 +676,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "r":
+			// Clear recently toggled tasks so done tasks are hidden
+			m.recentlyToggled = make(map[string]time.Time)
 			m.refresh()
+
+		case "u":
+			m.undoLastToggle()
 
 		case "e":
 			if len(m.tasks) > 0 {
@@ -691,6 +770,7 @@ func (m model) View() string {
 		// Right column: Actions + General
 		rightCol := headerStyle.Render("Actions") + "\n"
 		rightCol += renderKey("space", "toggle") + "\n"
+		rightCol += renderKey("u", "undo") + "\n"
 		rightCol += renderKey("a n", "add") + "\n"
 		rightCol += renderKey("e", "edit") + "\n"
 		rightCol += renderKey("d", "delete") + "\n"
@@ -906,6 +986,7 @@ func (m model) View() string {
 				fileInfo := fileStyle.Render(fmt.Sprintf(" (%s:%d)", relPath(m.vaultPath, task.FilePath), task.LineNumber))
 
 				line := renderTask(task.Done, task.Description)
+
 				if m.cursor == i {
 					line = selectedStyle.Render(line)
 				}
@@ -1009,6 +1090,7 @@ func (m model) View() string {
 					}
 
 					line := renderTask(task.Done, task.Description)
+
 					if m.cursor == taskIndex {
 						line = selectedStyle.Render(line)
 					}
