@@ -22,7 +22,6 @@ func containsGlob(path string) bool {
 }
 
 func main() {
-	vaultPath := flag.String("vault", "", "Path to Obsidian vault (deprecated, use positional arg)")
 	queryInput := flag.String("query", "", "Query file path or inline query string")
 	queryInputShort := flag.String("q", "", "Query file path or inline query string (short)")
 	listOnly := flag.Bool("list", false, "List tasks without TUI (non-interactive)")
@@ -114,25 +113,7 @@ func main() {
 		titleName = filepath.Base(resolvedVault)
 	}
 
-	// --vault flag overrides positional (for backward compat)
-	if *vaultPath != "" {
-		expanded, err := expandPath(*vaultPath)
-
-		if err != nil {
-			fmt.Printf("Error expanding vault path: %v\n", err)
-			os.Exit(1)
-		}
-
-		resolvedVault = filepath.Clean(expanded)
-
-		if resolved, err := filepath.EvalSymlinks(resolvedVault); err == nil {
-			resolvedVault = resolved
-		}
-
-		titleName = filepath.Base(resolvedVault)
-	}
-
-	// If no vault from args/flags, try profile
+	// If no vault from args, try profile
 	if resolvedVault == "" {
 		name, profile, err := selectProfile(*profileName, cfg)
 
@@ -166,7 +147,6 @@ func main() {
 		fmt.Println("  ot --profile <name>            Use named profile from config")
 		fmt.Println("\nOptions:")
 		fmt.Println("  -q, --query <query>   Query file path or inline query string")
-		fmt.Println("  --vault <path>        Path to vault (deprecated, use positional arg)")
 		fmt.Println("  --profile <name>      Use profile from config")
 		fmt.Println("  --list                List tasks without TUI")
 		fmt.Println("  --version             Show version")
