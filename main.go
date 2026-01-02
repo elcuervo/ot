@@ -160,7 +160,7 @@ func main() {
 		fmt.Println("  group by filename     Group tasks by filename")
 		fmt.Println("\nDate values: today, tomorrow, yesterday, or YYYY-MM-DD")
 		fmt.Println("\nExamples:")
-		fmt.Println("  ot ~/obsidian-vault")
+		fmt.Println("  ot ~/vault")
 		fmt.Println("  ot ~/vault -q 'due today'")
 		fmt.Println("  ot ~/vault -q queries/work.md")
 		fmt.Println("  ot 'projects/*/todo.md'")

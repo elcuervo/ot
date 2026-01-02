@@ -1,6 +1,6 @@
 # ot
 
-CLI tool to interact with [Obsidian Tasks](https://publish.obsidian.md/tasks/Introduction)
+_organized tasks_
 
 ![VHS](https://vhs.charm.sh/vhs-EKUmLBaqqlEFUJtgA9ZeI.gif)
 
@@ -33,7 +33,7 @@ nix profile install github:elcuervo/ot
 ## Usage
 
 ```bash
-ot ~/obsidian-vault              # Show 'not done' tasks from vault
+ot ~/vault                       # Show 'not done' tasks from vault
 ot ~/vault -q 'due today'        # Inline query
 ot ~/vault -q queries/tasks.md   # Query file
 ot 'projects/*/todo.md'          # Glob pattern
@@ -101,7 +101,7 @@ If `default_profile` is set, run `ot` without arguments to use it.
 
 ## Query File
 
-The query file uses Obsidian Tasks syntax:
+The query file uses [Obsidian Tasks](https://publish.obsidian.md/tasks/Introduction) syntax:
 
 <pre>
 ## Due Today

@@ -1,5 +1,5 @@
 {
-  description = "ot - Obsidian Tasks";
+  description = "ot - Organized Tasks";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
