@@ -195,34 +195,35 @@ func main() {
 
 	// Get files to parse: from glob matches or vault scan
 	var files []string
+	var allTasks []*Task
+	var cache *TaskCache
+
 	if len(globFiles) > 0 {
+		// Glob mode: parse files directly (typically small set)
 		files = globFiles
+		if !*listOnly {
+			cache = NewTaskCache()
+		}
+		for _, file := range files {
+			tasks, err := parseFile(file)
+			if err != nil {
+				fmt.Printf("Warning: could not parse %s: %v\n", file, err)
+				continue
+			}
+			if cache != nil {
+				cache.Set(file, tasks)
+			}
+			allTasks = append(allTasks, tasks...)
+		}
 	} else {
-		files, err = scanVault(resolvedVault)
-		if err != nil {
-			fmt.Printf("Error scanning vault: %v\n", err)
+		// Vault mode: use loader for potentially large vaults
+		useCache := !*listOnly
+		var scanErr error
+		files, allTasks, cache, scanErr = RunWithLoaderProgress(resolvedVault, useCache)
+		if scanErr != nil {
+			fmt.Printf("Error scanning vault: %v\n", scanErr)
 			os.Exit(1)
 		}
-	}
-
-	// Initialize cache for TUI mode
-	var cache *TaskCache
-	if !*listOnly {
-		cache = NewTaskCache()
-	}
-
-	var allTasks []*Task
-	for _, file := range files {
-		tasks, err := parseFile(file)
-		if err != nil {
-			fmt.Printf("Warning: could not parse %s: %v\n", file, err)
-			continue
-		}
-		// Cache tasks on initial load
-		if cache != nil {
-			cache.Set(file, tasks)
-		}
-		allTasks = append(allTasks, tasks...)
 	}
 
 	var sections []QuerySection
