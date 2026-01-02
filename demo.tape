@@ -70,6 +70,22 @@ Sleep 800ms
 Escape
 Sleep 600ms
 
+# === PRIORITY ===
+Type "+"
+Sleep 200ms
+Type "+"
+Sleep 200ms
+Type "+"
+Sleep 600ms
+
+# Reset priority
+Type "0"
+Sleep 600ms
+
+# Set highest priority
+Type "!"
+Sleep 800ms
+
 # === REFRESH ===
 Type "r"
 Sleep 1s
