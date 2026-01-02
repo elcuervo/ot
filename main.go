@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -224,12 +225,22 @@ func main() {
 		}
 	}
 
+	// Initialize cache for TUI mode
+	var cache *TaskCache
+	if !*listOnly {
+		cache = NewTaskCache()
+	}
+
 	var allTasks []*Task
 	for _, file := range files {
 		tasks, err := parseFile(file)
 		if err != nil {
 			fmt.Printf("Warning: could not parse %s: %v\n", file, err)
 			continue
+		}
+		// Cache tasks on initial load
+		if cache != nil {
+			cache.Set(file, tasks)
 		}
 		allTasks = append(allTasks, tasks...)
 	}
@@ -291,7 +302,31 @@ func main() {
 		os.Exit(0)
 	}
 
-	p := tea.NewProgram(newModel(sections, resolvedVault, titleName, queryFile, queries, editorMode), tea.WithAltScreen())
+	// Create watcher for TUI mode (not glob mode)
+	var watcher *Watcher
+	var debouncer *Debouncer
+	if len(globFiles) == 0 {
+		watcher, _ = NewWatcher(resolvedVault)
+		if watcher != nil {
+			debouncer = NewDebouncer(150 * time.Millisecond)
+		}
+	}
+
+	m := newModel(sections, resolvedVault, titleName, queryFile, queries, editorMode, cache, watcher, debouncer)
+	p := tea.NewProgram(m, tea.WithAltScreen())
+
+	// Set program for debouncer to send messages
+	if debouncer != nil {
+		debouncer.SetProgram(p)
+	}
+
+	// Cleanup watcher on exit
+	defer func() {
+		if watcher != nil {
+			watcher.Close()
+		}
+	}()
+
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running TUI: %v\n", err)
 		os.Exit(1)

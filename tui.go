@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -50,9 +51,15 @@ type model struct {
 	adding      bool
 	addingRef   *Task
 	addingInput textinput.Model
+
+	// File watching and caching
+	cache             *TaskCache
+	watcher           *Watcher
+	debouncer         *Debouncer
+	selfModifiedFiles map[string]time.Time
 }
 
-func newModel(sections []QuerySection, vaultPath string, titleName string, queryFile string, queries []*Query, editorMode string) model {
+func newModel(sections []QuerySection, vaultPath string, titleName string, queryFile string, queries []*Query, editorMode string, cache *TaskCache, watcher *Watcher, debouncer *Debouncer) model {
 	var tasks []*Task
 	taskToSection := make(map[*Task]string)
 	taskToGroup := make(map[*Task]string)
@@ -67,22 +74,30 @@ func newModel(sections []QuerySection, vaultPath string, titleName string, query
 	}
 
 	return model{
-		sections:      sections,
-		tasks:         tasks,
-		vaultPath:     vaultPath,
-		titleName:     titleName,
-		queryFile:     queryFile,
-		queries:       queries,
-		windowHeight:  defaultWindowHeight,
-		windowWidth:   defaultWindowWidth,
-		taskToSection: taskToSection,
-		taskToGroup:   taskToGroup,
-		editorMode:    editorMode,
+		sections:          sections,
+		tasks:             tasks,
+		vaultPath:         vaultPath,
+		titleName:         titleName,
+		queryFile:         queryFile,
+		queries:           queries,
+		windowHeight:      defaultWindowHeight,
+		windowWidth:       defaultWindowWidth,
+		taskToSection:     taskToSection,
+		taskToGroup:       taskToGroup,
+		editorMode:        editorMode,
+		cache:             cache,
+		watcher:           watcher,
+		debouncer:         debouncer,
+		selfModifiedFiles: make(map[string]time.Time),
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.WindowSize()
+	cmds := []tea.Cmd{tea.WindowSize()}
+	if m.watcher != nil {
+		cmds = append(cmds, m.watcher.WatchCmd())
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m *model) filterBySearch() {
@@ -138,6 +153,10 @@ func (m *model) activeTasks() []*Task {
 }
 
 func (m *model) refresh() {
+	m.refreshWithCache()
+}
+
+func (m *model) refreshWithCache() {
 	// If we have a query file, re-parse it; otherwise reuse existing queries
 	if m.queryFile != "" {
 		queries, err := parseAllQueryBlocks(m.queryFile)
@@ -159,9 +178,22 @@ func (m *model) refresh() {
 	var allTasks []*Task
 
 	for _, file := range files {
+		// Try cache first
+		if m.cache != nil {
+			if tasks, ok := m.cache.Get(file); ok {
+				allTasks = append(allTasks, tasks...)
+				continue
+			}
+		}
+
+		// Parse and cache
 		tasks, err := parseFile(file)
 		if err != nil {
 			continue
+		}
+
+		if m.cache != nil {
+			m.cache.Set(file, tasks)
 		}
 
 		allTasks = append(allTasks, tasks...)
@@ -269,6 +301,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refresh()
 		return m, nil
 
+	case FileChangeMsg:
+		// Skip self-triggered changes (within 500ms)
+		if t, ok := m.selfModifiedFiles[msg.Path]; ok && time.Since(t) < 500*time.Millisecond {
+			delete(m.selfModifiedFiles, msg.Path)
+			if m.watcher != nil {
+				return m, m.watcher.WatchCmd()
+			}
+			return m, nil
+		}
+
+		// Invalidate cache and trigger debounced refresh
+		if m.cache != nil {
+			m.cache.Invalidate(msg.Path)
+		}
+		if m.debouncer != nil {
+			m.debouncer.Trigger()
+		}
+		if m.watcher != nil {
+			return m, m.watcher.WatchCmd()
+		}
+		return m, nil
+
+	case DebouncedRefreshMsg:
+		m.refreshWithCache()
+		return m, nil
+
 	case tea.KeyMsg:
 		if m.aboutOpen {
 			switch msg.String() {
@@ -297,6 +355,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.editingTask.rebuildRawLine()
 					if err := saveTask(m.editingTask); err != nil {
 						m.err = err
+					} else {
+						m.selfModifiedFiles[m.editingTask.FilePath] = time.Now()
 					}
 				}
 				m.editing = false
@@ -319,8 +379,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "y", "Y", "enter":
 				if m.deletingTask != nil {
+					filePath := m.deletingTask.FilePath
 					if err := deleteTask(m.deletingTask); err != nil {
 						m.err = err
+					} else {
+						m.selfModifiedFiles[filePath] = time.Now()
 					}
 				}
 				m.deleting = false
@@ -352,6 +415,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.addingRef != nil && newValue != "" {
 					if _, err := addTask(m.addingRef, newValue); err != nil {
 						m.err = err
+					} else {
+						m.selfModifiedFiles[m.addingRef.FilePath] = time.Now()
 					}
 				}
 				m.adding = false
@@ -414,6 +479,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						task.Toggle()
 						if err := saveTask(task); err != nil {
 							m.err = err
+						} else {
+							m.selfModifiedFiles[task.FilePath] = time.Now()
 						}
 					}
 					return m, nil
@@ -521,6 +588,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				task.Toggle()
 				if err := saveTask(task); err != nil {
 					m.err = err
+				} else {
+					m.selfModifiedFiles[task.FilePath] = time.Now()
 				}
 			}
 
