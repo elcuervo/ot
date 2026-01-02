@@ -9,107 +9,64 @@ Set Width 1200
 Set Height 800
 Set Padding 20
 
-# Start the app
-Type "ot --vault ./examples/vault ./examples/query.md"
+# === QUICK START ===
+Type "ot ./examples/vault"
 Sleep 500ms
 Enter
-Sleep 2s
+Sleep 2.5s
 
-# === NAVIGATION ===
-# Scroll through the task list
-Down
-Sleep 400ms
-Down
-Sleep 400ms
-Down
+# Navigate smoothly
+Type "j"
+Sleep 250ms
+Type "j"
+Sleep 250ms
+Type "j"
+Sleep 250ms
+Type "j"
 Sleep 400ms
 
-# Vim-style navigation
-Type "jj"
-Sleep 500ms
-Type "kk"
-Sleep 500ms
-
-# Jump to end and back
+# Jump to bottom and back
 Type "G"
-Sleep 600ms
+Sleep 700ms
 Type "g"
-Sleep 600ms
+Sleep 700ms
 
-# === COMPLETE A TASK ===
-# Navigate to "Morning standup"
-Down
-Sleep 300ms
-
-# Mark it done with space
+# === TOGGLE A TASK ===
+Type "jj"
+Sleep 400ms
 Space
-Sleep 1s
+Sleep 1.2s
 
-# === EDIT A TASK ===
-# Navigate to "Call dentist"
-Down
+# === INLINE EDITING ===
+Type "j"
 Sleep 300ms
-Down
-Sleep 300ms
-
-# Open edit modal
 Type "e"
 Sleep 800ms
 
-# Add priority tag
+# Move to end and add tag
 Ctrl+E
-Sleep 200ms
-Type " #urgent"
+Type " #priority"
 Sleep 500ms
-
-# Save
 Enter
-Sleep 1s
-
-# === ADD A TASK ===
-# Add a new task after current one
-Type "a"
-Sleep 800ms
-
-# Type the new task
-Type "Follow up on PR review"
-Sleep 600ms
-
-# Save
-Enter
-Sleep 1s
-
-# === DELETE A TASK ===
-# Navigate down to a task
-Down
-Sleep 300ms
-
-# Show delete confirmation
-Type "d"
 Sleep 1.2s
 
-# Cancel with 'n'
-Type "n"
-Sleep 600ms
+# === ADD NEW TASK ===
+Type "a"
+Sleep 700ms
+Type "Review quarterly goals"
+Sleep 400ms
+Enter
+Sleep 1.2s
 
 # === SEARCH ===
-# Open search
 Type "/"
+Sleep 400ms
+Type "tutorial"
 Sleep 500ms
-
-# Search for tasks with links
-Type "Go"
-Sleep 800ms
-
-# Navigate results
 Enter
-Sleep 500ms
-
-# Toggle from search
+Sleep 300ms
 Space
 Sleep 800ms
-
-# Exit search
 Escape
 Sleep 600ms
 
@@ -119,8 +76,20 @@ Sleep 1s
 
 # Back to top
 Type "g"
-Sleep 800ms
+Sleep 500ms
 
 # === QUIT ===
 Type "q"
+Sleep 600ms
+
+# === GLOB PATTERNS ===
+Type "ot --list './examples/project-*/todo.md'"
 Sleep 500ms
+Enter
+Sleep 2.5s
+
+# === INLINE QUERIES ===
+Type "ot --list ./examples/vault -q 'due before 2026-01-01'"
+Sleep 500ms
+Enter
+Sleep 2s
