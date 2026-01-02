@@ -54,6 +54,9 @@ ot --profile work                # Use named profile
 | `d` | Delete task |
 | `/` | Search tasks |
 | `r` | Refresh |
+| `+` / `-` | Increase/decrease priority |
+| `!` | Set highest priority |
+| `0` | Reset to normal priority |
 | `?` | Help |
 | `q` | Quit |
 
@@ -83,6 +86,20 @@ Press `/` to search. Matches against:
 - Task description
 - Section name (e.g., "Due Today", "Upcoming")
 - Group name (folder or filename when grouped)
+
+### Priority
+
+Priorities are stored as emojis in the task description:
+
+- `🔺` Highest
+- `⏫` High
+- `🔼` Medium
+- (none) Normal
+- `🔽` Low
+- `⏬` Lowest
+
+Use `+` / `-` to cycle priority, `!` to set highest, and `0` to reset.
+Queries can sort by priority with `sort by priority`.
 
 ## Config
 
@@ -125,3 +142,4 @@ Supported filters:
 - `due today`, `due tomorrow`, `due yesterday`
 - `due before <date>`, `due after <date>`
 - `group by folder`, `group by filename`
+- `sort by priority`
