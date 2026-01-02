@@ -14,11 +14,39 @@ import (
 )
 
 var (
-	checkboxRe = regexp.MustCompile(`^(\s*-\s*)\[([ xX])\](.*)$`)
-	doneRe     = regexp.MustCompile(`\s*✅\s*\d{4}-\d{2}-\d{2}`)
-	taskRe     = regexp.MustCompile(`^\s*-\s*\[([ xX])\]\s*(.*)$`)
-	dueDateRe  = regexp.MustCompile(`📅\s*(\d{4}-\d{2}-\d{2})`)
+	checkboxRe  = regexp.MustCompile(`^(\s*-\s*)\[([ xX])\](.*)$`)
+	doneRe      = regexp.MustCompile(`\s*✅\s*\d{4}-\d{2}-\d{2}`)
+	taskRe      = regexp.MustCompile(`^\s*-\s*\[([ xX])\]\s*(.*)$`)
+	dueDateRe   = regexp.MustCompile(`📅\s*(\d{4}-\d{2}-\d{2})`)
+	priorityRe  = regexp.MustCompile(`[🔺⏫🔼🔽⏬]`)
 )
+
+// Priority levels (lower value = higher priority)
+const (
+	PriorityHighest = iota + 1
+	PriorityHigh
+	PriorityMedium
+	PriorityNormal
+	PriorityLow
+	PriorityLowest
+)
+
+var priorityEmojis = map[int]string{
+	PriorityHighest: "🔺",
+	PriorityHigh:    "⏫",
+	PriorityMedium:  "🔼",
+	PriorityNormal:  "",
+	PriorityLow:     "🔽",
+	PriorityLowest:  "⏬",
+}
+
+var emojiToPriority = map[string]int{
+	"🔺": PriorityHighest,
+	"⏫": PriorityHigh,
+	"🔼": PriorityMedium,
+	"🔽": PriorityLow,
+	"⏬": PriorityLowest,
+}
 
 // Task represents a single task from a markdown file
 type Task struct {
@@ -29,6 +57,7 @@ type Task struct {
 	Description string
 	Modified    bool
 	DueDate     *time.Time
+	Priority    int
 }
 
 // Toggle switches the task between done and not done
@@ -110,6 +139,58 @@ func parseDueDate(description string) *time.Time {
 	return &date
 }
 
+// parsePriority extracts priority from task description
+func parsePriority(description string) int {
+	match := priorityRe.FindString(description)
+	if match == "" {
+		return PriorityNormal
+	}
+	if priority, ok := emojiToPriority[match]; ok {
+		return priority
+	}
+	return PriorityNormal
+}
+
+// SetPriority updates the task's priority
+func (t *Task) SetPriority(priority int) {
+	if priority < PriorityHighest {
+		priority = PriorityHighest
+	}
+	if priority > PriorityLowest {
+		priority = PriorityLowest
+	}
+
+	// Remove existing priority emoji from description
+	t.Description = strings.TrimSpace(priorityRe.ReplaceAllString(t.Description, ""))
+
+	// Add new priority emoji if not normal
+	if emoji := priorityEmojis[priority]; emoji != "" {
+		t.Description = t.Description + " " + emoji
+	}
+
+	t.Priority = priority
+	t.Modified = true
+	t.rebuildRawLine()
+}
+
+// CyclePriorityUp increases priority (towards highest)
+func (t *Task) CyclePriorityUp() {
+	newPriority := t.Priority - 1
+	if newPriority < PriorityHighest {
+		newPriority = PriorityLowest // wrap around
+	}
+	t.SetPriority(newPriority)
+}
+
+// CyclePriorityDown decreases priority (towards lowest)
+func (t *Task) CyclePriorityDown() {
+	newPriority := t.Priority + 1
+	if newPriority > PriorityLowest {
+		newPriority = PriorityHighest // wrap around
+	}
+	t.SetPriority(newPriority)
+}
+
 // parseFile extracts tasks from a markdown file
 func parseFile(filePath string) ([]*Task, error) {
 	file, err := os.Open(filePath)
@@ -142,6 +223,7 @@ func parseFile(filePath string) ([]*Task, error) {
 				Done:        status == "x",
 				Description: description,
 				DueDate:     parseDueDate(description),
+				Priority:    parsePriority(description),
 			})
 		}
 	}
@@ -237,6 +319,7 @@ func addTask(refTask *Task, description string) (*Task, error) {
 		RawLine:     newLine,
 		Done:        false,
 		Description: description,
+		Priority:    PriorityNormal,
 	}, nil
 }
 

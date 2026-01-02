@@ -271,7 +271,7 @@ func (m *model) refreshWithCache() {
 
 	for _, query := range m.queries {
 		filtered := m.filterTasksWithRecent(allTasks, query)
-		groups := groupTasks(filtered, query.GroupBy, m.vaultPath)
+		groups := groupTasks(filtered, query.GroupBy, query.SortBy, m.vaultPath)
 
 		sections = append(sections, QuerySection{
 			Name:   query.Name,
@@ -332,6 +332,33 @@ func (m *model) toggleAndSave(task *Task) {
 	}
 	m.selfModifiedFiles[task.FilePath] = time.Now()
 	m.recentlyToggled[taskKey(task)] = time.Now()
+}
+
+func (m *model) setPriorityAndSave(task *Task, priority int) {
+	task.SetPriority(priority)
+	if err := saveTask(task); err != nil {
+		m.err = err
+		return
+	}
+	m.selfModifiedFiles[task.FilePath] = time.Now()
+}
+
+func (m *model) cyclePriorityUpAndSave(task *Task) {
+	task.CyclePriorityUp()
+	if err := saveTask(task); err != nil {
+		m.err = err
+		return
+	}
+	m.selfModifiedFiles[task.FilePath] = time.Now()
+}
+
+func (m *model) cyclePriorityDownAndSave(task *Task) {
+	task.CyclePriorityDown()
+	if err := saveTask(task); err != nil {
+		m.err = err
+		return
+	}
+	m.selfModifiedFiles[task.FilePath] = time.Now()
 }
 
 func (m *model) startEdit(task *Task) tea.Cmd {
@@ -690,6 +717,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.tasks) > 0 {
 				task := m.tasks[m.cursor]
 				return m, m.startAdd(task)
+			}
+
+		case "+":
+			if len(m.tasks) > 0 {
+				task := m.tasks[m.cursor]
+				m.cyclePriorityUpAndSave(task)
+			}
+
+		case "-":
+			if len(m.tasks) > 0 {
+				task := m.tasks[m.cursor]
+				m.cyclePriorityDownAndSave(task)
+			}
+
+		case "!":
+			if len(m.tasks) > 0 {
+				task := m.tasks[m.cursor]
+				m.setPriorityAndSave(task, PriorityHighest)
+			}
+
+		case "0":
+			if len(m.tasks) > 0 {
+				task := m.tasks[m.cursor]
+				m.setPriorityAndSave(task, PriorityNormal)
 			}
 		}
 	}

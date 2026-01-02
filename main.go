@@ -175,7 +175,16 @@ func main() {
 		fmt.Println("  due after <date>      Tasks due after date")
 		fmt.Println("  group by folder       Group tasks by folder")
 		fmt.Println("  group by filename     Group tasks by filename")
+		fmt.Println("  sort by priority      Sort tasks by priority")
+		fmt.Println("  sort by due           Sort tasks by due date")
 		fmt.Println("\nDate values: today, tomorrow, yesterday, or YYYY-MM-DD")
+		fmt.Println("\nPriority emojis (highest to lowest):")
+		fmt.Println("  🔺 Highest  ⏫ High  🔼 Medium  (none) Normal  🔽 Low  ⏬ Lowest")
+		fmt.Println("\nTUI keybindings for priority:")
+		fmt.Println("  +   Increase priority (cycle up)")
+		fmt.Println("  -   Decrease priority (cycle down)")
+		fmt.Println("  !   Set to highest priority")
+		fmt.Println("  0   Reset to normal priority")
 		fmt.Println("\nExamples:")
 		fmt.Println("  ot ~/vault")
 		fmt.Println("  ot ~/vault -q 'due today'")
@@ -201,8 +210,8 @@ func main() {
 	} else if queryFile != "" {
 		queries, err = parseAllQueryBlocks(queryFile)
 	} else {
-		// Default: show "not done" tasks
-		queries = []*Query{{NotDone: true}}
+		// Default: show "not done" tasks sorted by priority
+		queries = []*Query{{NotDone: true, SortBy: "priority"}}
 	}
 
 	if err != nil {
@@ -267,7 +276,7 @@ func main() {
 
 	for _, query := range queries {
 		filtered := filterTasks(allTasks, query)
-		groups := groupTasks(filtered, query.GroupBy, resolvedVault)
+		groups := groupTasks(filtered, query.GroupBy, query.SortBy, resolvedVault)
 
 		sections = append(sections, QuerySection{
 			Name:   query.Name,

@@ -334,7 +334,7 @@ func TestGroupTasksByFolder(t *testing.T) {
 		{FilePath: "/vault/projects/home.md", Description: "Task 4"},
 	}
 
-	groups := groupTasks(tasks, "folder", "/vault")
+	groups := groupTasks(tasks, "folder", "", "/vault")
 
 	if len(groups) != 2 {
 		t.Errorf("Expected 2 groups, got %d", len(groups))
@@ -414,6 +414,142 @@ func TestParseDueDate(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestParsePriority(t *testing.T) {
+	tests := []struct {
+		name        string
+		description string
+		want        int
+	}{
+		{
+			name:        "highest priority",
+			description: "Urgent task 🔺",
+			want:        PriorityHighest,
+		},
+		{
+			name:        "high priority",
+			description: "Important task ⏫",
+			want:        PriorityHigh,
+		},
+		{
+			name:        "medium priority",
+			description: "Regular task 🔼",
+			want:        PriorityMedium,
+		},
+		{
+			name:        "low priority",
+			description: "Backlog item 🔽",
+			want:        PriorityLow,
+		},
+		{
+			name:        "lowest priority",
+			description: "Someday maybe ⏬",
+			want:        PriorityLowest,
+		},
+		{
+			name:        "no priority (normal)",
+			description: "Regular task without priority",
+			want:        PriorityNormal,
+		},
+		{
+			name:        "priority with due date",
+			description: "Task 📅 2025-01-15 ⏫",
+			want:        PriorityHigh,
+		},
+		{
+			name:        "priority at start",
+			description: "🔺 Urgent at start",
+			want:        PriorityHighest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parsePriority(tt.description)
+			if got != tt.want {
+				t.Errorf("parsePriority(%q) = %d, want %d", tt.description, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSetPriority(t *testing.T) {
+	task := &Task{
+		RawLine:     "- [ ] Test task",
+		Description: "Test task",
+		Priority:    PriorityNormal,
+	}
+
+	// Set to high priority
+	task.SetPriority(PriorityHigh)
+	if task.Priority != PriorityHigh {
+		t.Errorf("Expected priority %d, got %d", PriorityHigh, task.Priority)
+	}
+	if !strings.Contains(task.Description, "⏫") {
+		t.Errorf("Expected description to contain ⏫, got %q", task.Description)
+	}
+
+	// Set back to normal (no emoji)
+	task.SetPriority(PriorityNormal)
+	if task.Priority != PriorityNormal {
+		t.Errorf("Expected priority %d, got %d", PriorityNormal, task.Priority)
+	}
+	if strings.Contains(task.Description, "⏫") {
+		t.Errorf("Expected description without priority emoji, got %q", task.Description)
+	}
+}
+
+func TestCyclePriority(t *testing.T) {
+	task := &Task{
+		RawLine:     "- [ ] Test task",
+		Description: "Test task",
+		Priority:    PriorityNormal,
+	}
+
+	// Cycle up from normal to medium
+	task.CyclePriorityUp()
+	if task.Priority != PriorityMedium {
+		t.Errorf("After cycle up from normal, expected %d, got %d", PriorityMedium, task.Priority)
+	}
+
+	// Cycle down from medium to normal
+	task.CyclePriorityDown()
+	if task.Priority != PriorityNormal {
+		t.Errorf("After cycle down from medium, expected %d, got %d", PriorityNormal, task.Priority)
+	}
+
+	// Cycle up from highest should wrap to lowest
+	task.SetPriority(PriorityHighest)
+	task.CyclePriorityUp()
+	if task.Priority != PriorityLowest {
+		t.Errorf("After cycle up from highest, expected %d (lowest), got %d", PriorityLowest, task.Priority)
+	}
+
+	// Cycle down from lowest should wrap to highest
+	task.CyclePriorityDown()
+	if task.Priority != PriorityHighest {
+		t.Errorf("After cycle down from lowest, expected %d (highest), got %d", PriorityHighest, task.Priority)
+	}
+}
+
+func TestSortTasksByPriority(t *testing.T) {
+	tasks := []*Task{
+		{Description: "Normal task", Priority: PriorityNormal},
+		{Description: "High task", Priority: PriorityHigh},
+		{Description: "Lowest task", Priority: PriorityLowest},
+		{Description: "Highest task", Priority: PriorityHighest},
+		{Description: "Low task", Priority: PriorityLow},
+	}
+
+	sorted := sortTasks(tasks, "priority")
+
+	expectedOrder := []int{PriorityHighest, PriorityHigh, PriorityNormal, PriorityLow, PriorityLowest}
+	for i, task := range sorted {
+		if task.Priority != expectedOrder[i] {
+			t.Errorf("At index %d: expected priority %d, got %d", i, expectedOrder[i], task.Priority)
+		}
 	}
 }
 

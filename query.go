@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -16,6 +17,7 @@ var (
 	groupByFuncRe   = regexp.MustCompile(`group by function task\.file\.(\w+)`)
 	groupBySimpleRe = regexp.MustCompile(`group by (\w+)`)
 	dateFilterRe    = regexp.MustCompile(`(due|scheduled|done)\s+((?:today|tomorrow|yesterday)(?:\s+or\s+(?:today|tomorrow|yesterday))*|before\s+\S+|after\s+\S+|on\s+\S+(?:\s+or\s+\S+)*)`)
+	sortByRe        = regexp.MustCompile(`sort by (\w+)`)
 )
 
 // DateFilter represents a date-based filter
@@ -32,6 +34,7 @@ type Query struct {
 	NotDone     bool
 	GroupBy     string
 	DateFilters []DateFilter
+	SortBy      string
 }
 
 // TaskGroup represents a group of tasks
@@ -199,6 +202,10 @@ func parseQueryContent(queryContent string) *Query {
 		}
 	}
 
+	if sortMatch := sortByRe.FindStringSubmatch(queryContent); sortMatch != nil {
+		query.SortBy = sortMatch[1]
+	}
+
 	return query
 }
 
@@ -318,10 +325,44 @@ func filterTasks(allTasks []*Task, query *Query) []*Task {
 	})
 }
 
-// groupTasks groups tasks by the specified field
-func groupTasks(tasks []*Task, groupBy string, vaultPath string) []TaskGroup {
+// sortTasks sorts tasks by the specified field (stable sort preserves original order for equal elements)
+func sortTasks(tasks []*Task, sortBy string) []*Task {
+	if sortBy == "" {
+		return tasks
+	}
+
+	// Make a copy to avoid modifying the original slice
+	sorted := make([]*Task, len(tasks))
+	copy(sorted, tasks)
+
+	switch sortBy {
+	case "priority":
+		slices.SortStableFunc(sorted, func(a, b *Task) int {
+			return cmp.Compare(a.Priority, b.Priority)
+		})
+	case "due":
+		slices.SortStableFunc(sorted, func(a, b *Task) int {
+			// Tasks without due dates go to the end
+			if a.DueDate == nil && b.DueDate == nil {
+				return 0
+			}
+			if a.DueDate == nil {
+				return 1
+			}
+			if b.DueDate == nil {
+				return -1
+			}
+			return a.DueDate.Compare(*b.DueDate)
+		})
+	}
+
+	return sorted
+}
+
+// groupTasks groups tasks by the specified field and optionally sorts within each group
+func groupTasks(tasks []*Task, groupBy string, sortBy string, vaultPath string) []TaskGroup {
 	if groupBy == "" {
-		return []TaskGroup{{Name: "", Tasks: tasks}}
+		return []TaskGroup{{Name: "", Tasks: sortTasks(tasks, sortBy)}}
 	}
 
 	groups := NewOrderedMap[string, []*Task]()
@@ -349,10 +390,11 @@ func groupTasks(tasks []*Task, groupBy string, vaultPath string) []TaskGroup {
 	result := make([]TaskGroup, 0, len(groups.Keys()))
 
 	for _, name := range groups.Keys() {
-		tasks, _ := groups.Get(name)
+		groupTasks, _ := groups.Get(name)
+		// Sort within each group
 		result = append(result, TaskGroup{
 			Name:  name,
-			Tasks: tasks,
+			Tasks: sortTasks(groupTasks, sortBy),
 		})
 	}
 
