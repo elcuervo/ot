@@ -39,7 +39,7 @@ lint: fmt vet
 demo: build
   ot --vault ./examples/vault ./examples/query.md
 
-gif:
+gif: build
   vhs -p demo.tape
 
 clean:
