@@ -27,8 +27,18 @@ func main() {
 	listOnly := flag.Bool("list", false, "List tasks without TUI (non-interactive)")
 	profileName := flag.String("profile", "", "Profile name from config (optional)")
 	showVersion := flag.Bool("version", false, "Show version and exit")
+	initTasks := flag.Bool("init", false, "Create a tasks.md file with an empty task")
 
 	flag.Parse()
+
+	if *initTasks {
+		if err := createTasksFile(); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Created tasks.md")
+		os.Exit(0)
+	}
 
 	if *showVersion {
 		sha := strings.TrimSpace(buildSHA)
@@ -110,7 +120,13 @@ func main() {
 			resolvedVault = resolved
 		}
 
+		// Use absolute path for better title when using "."
 		titleName = filepath.Base(resolvedVault)
+		if titleName == "." {
+			if abs, err := filepath.Abs(resolvedVault); err == nil {
+				titleName = filepath.Base(abs)
+			}
+		}
 	}
 
 	// If no vault from args, try profile
@@ -149,6 +165,7 @@ func main() {
 		fmt.Println("  -q, --query <query>   Query file path or inline query string")
 		fmt.Println("  --profile <name>      Use profile from config")
 		fmt.Println("  --list                List tasks without TUI")
+		fmt.Println("  --init                Create tasks.md with an empty task")
 		fmt.Println("  --version             Show version")
 		fmt.Println("\nSupported query filters:")
 		fmt.Println("  not done              Show only incomplete tasks")

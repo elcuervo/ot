@@ -277,3 +277,15 @@ func openInEditor(task *Task) tea.Cmd {
 		return editorFinishedMsg{err: err, task: task}
 	})
 }
+
+// createTasksFile creates a tasks.md file with an empty task in the current directory
+func createTasksFile() error {
+	filename := "tasks.md"
+
+	if _, err := os.Stat(filename); err == nil {
+		return fmt.Errorf("%s already exists", filename)
+	}
+
+	content := "# Tasks\n\n- [ ] \n"
+	return os.WriteFile(filename, []byte(content), 0644)
+}
