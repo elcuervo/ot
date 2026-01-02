@@ -18,7 +18,14 @@ const (
 	minVisibleHeight    = 3
 	maxInputWidth       = 70
 	minInputWidth       = 30
+	prioritySaveDebounce = 120 * time.Millisecond
 )
+
+type prioritySaveMsg struct {
+	key string
+	at  time.Time
+	task *Task
+}
 
 // model is the BubbleTea model
 type model struct {
@@ -63,6 +70,9 @@ type model struct {
 	// Recently toggled tasks (kept visible for undo)
 	// Key is "filepath:lineNumber" to survive re-parsing
 	recentlyToggled map[string]time.Time
+
+	// Debounced priority saves (keyed by taskKey)
+	prioritySavePending map[string]time.Time
 }
 
 func newModel(sections []QuerySection, vaultPath string, titleName string, queryFile string, queries []*Query, editorMode string, cache *TaskCache, watcher *Watcher, debouncer *Debouncer) model {
@@ -96,6 +106,7 @@ func newModel(sections []QuerySection, vaultPath string, titleName string, query
 		debouncer:         debouncer,
 		selfModifiedFiles: make(map[string]time.Time),
 		recentlyToggled:   make(map[string]time.Time),
+		prioritySavePending: make(map[string]time.Time),
 	}
 }
 
@@ -334,31 +345,28 @@ func (m *model) toggleAndSave(task *Task) {
 	m.recentlyToggled[taskKey(task)] = time.Now()
 }
 
-func (m *model) setPriorityAndSave(task *Task, priority int) {
+func (m *model) schedulePrioritySave(task *Task) tea.Cmd {
+	key := taskKey(task)
+	at := time.Now()
+	m.prioritySavePending[key] = at
+	return tea.Tick(prioritySaveDebounce, func(time.Time) tea.Msg {
+		return prioritySaveMsg{key: key, at: at, task: task}
+	})
+}
+
+func (m *model) setPriorityDebounced(task *Task, priority int) tea.Cmd {
 	task.SetPriority(priority)
-	if err := saveTask(task); err != nil {
-		m.err = err
-		return
-	}
-	m.selfModifiedFiles[task.FilePath] = time.Now()
+	return m.schedulePrioritySave(task)
 }
 
-func (m *model) cyclePriorityUpAndSave(task *Task) {
+func (m *model) cyclePriorityUpDebounced(task *Task) tea.Cmd {
 	task.CyclePriorityUp()
-	if err := saveTask(task); err != nil {
-		m.err = err
-		return
-	}
-	m.selfModifiedFiles[task.FilePath] = time.Now()
+	return m.schedulePrioritySave(task)
 }
 
-func (m *model) cyclePriorityDownAndSave(task *Task) {
+func (m *model) cyclePriorityDownDebounced(task *Task) tea.Cmd {
 	task.CyclePriorityDown()
-	if err := saveTask(task); err != nil {
-		m.err = err
-		return
-	}
-	m.selfModifiedFiles[task.FilePath] = time.Now()
+	return m.schedulePrioritySave(task)
 }
 
 func (m *model) startEdit(task *Task) tea.Cmd {
@@ -425,6 +433,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case DebouncedRefreshMsg:
 		m.refreshWithCache()
+		return m, nil
+
+	case prioritySaveMsg:
+		latest, ok := m.prioritySavePending[msg.key]
+		if !ok || !latest.Equal(msg.at) {
+			return m, nil
+		}
+		delete(m.prioritySavePending, msg.key)
+		if err := saveTask(msg.task); err != nil {
+			m.err = err
+		} else {
+			m.selfModifiedFiles[msg.task.FilePath] = time.Now()
+		}
 		return m, nil
 
 	case tea.KeyMsg:
@@ -722,25 +743,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "+":
 			if len(m.tasks) > 0 {
 				task := m.tasks[m.cursor]
-				m.cyclePriorityUpAndSave(task)
+				return m, m.cyclePriorityUpDebounced(task)
 			}
 
 		case "-":
 			if len(m.tasks) > 0 {
 				task := m.tasks[m.cursor]
-				m.cyclePriorityDownAndSave(task)
+				return m, m.cyclePriorityDownDebounced(task)
 			}
 
 		case "!":
 			if len(m.tasks) > 0 {
 				task := m.tasks[m.cursor]
-				m.setPriorityAndSave(task, PriorityHighest)
+				return m, m.setPriorityDebounced(task, PriorityHighest)
 			}
 
 		case "0":
 			if len(m.tasks) > 0 {
 				task := m.tasks[m.cursor]
-				m.setPriorityAndSave(task, PriorityNormal)
+				return m, m.setPriorityDebounced(task, PriorityNormal)
 			}
 		}
 	}

@@ -175,20 +175,12 @@ func (t *Task) SetPriority(priority int) {
 
 // CyclePriorityUp increases priority (towards highest)
 func (t *Task) CyclePriorityUp() {
-	newPriority := t.Priority - 1
-	if newPriority < PriorityHighest {
-		newPriority = PriorityLowest // wrap around
-	}
-	t.SetPriority(newPriority)
+	t.SetPriority(t.Priority - 1)
 }
 
 // CyclePriorityDown decreases priority (towards lowest)
 func (t *Task) CyclePriorityDown() {
-	newPriority := t.Priority + 1
-	if newPriority > PriorityLowest {
-		newPriority = PriorityHighest // wrap around
-	}
-	t.SetPriority(newPriority)
+	t.SetPriority(t.Priority + 1)
 }
 
 // parseFile extracts tasks from a markdown file

@@ -520,17 +520,18 @@ func TestCyclePriority(t *testing.T) {
 		t.Errorf("After cycle down from medium, expected %d, got %d", PriorityNormal, task.Priority)
 	}
 
-	// Cycle up from highest should wrap to lowest
+	// Cycle up from highest should stay at highest
 	task.SetPriority(PriorityHighest)
 	task.CyclePriorityUp()
-	if task.Priority != PriorityLowest {
-		t.Errorf("After cycle up from highest, expected %d (lowest), got %d", PriorityLowest, task.Priority)
+	if task.Priority != PriorityHighest {
+		t.Errorf("After cycle up from highest, expected %d (highest), got %d", PriorityHighest, task.Priority)
 	}
 
-	// Cycle down from lowest should wrap to highest
+	// Cycle down from lowest should stay at lowest
+	task.SetPriority(PriorityLowest)
 	task.CyclePriorityDown()
-	if task.Priority != PriorityHighest {
-		t.Errorf("After cycle down from lowest, expected %d (highest), got %d", PriorityHighest, task.Priority)
+	if task.Priority != PriorityLowest {
+		t.Errorf("After cycle down from lowest, expected %d (lowest), got %d", PriorityLowest, task.Priority)
 	}
 }
 
