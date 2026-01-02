@@ -819,18 +819,20 @@ func (m model) View() string {
 			return k + " " + d
 		}
 
-		// Left column: Navigation + Search
+		// Left column: Navigation + Search + Priority
 		leftCol := headerStyle.Render("Navigation") + "\n"
 		leftCol += renderKey("↑ k", "up") + "\n"
 		leftCol += renderKey("↓ j", "down") + "\n"
 		leftCol += renderKey("g", "first") + "\n"
 		leftCol += renderKey("G", "last") + "\n"
 		leftCol += "\n"
-		leftCol += headerStyle.Render("Search") + "\n"
-		leftCol += renderKey("/", "search") + "\n"
-		leftCol += renderKey("esc", "exit") + "\n"
+		leftCol += headerStyle.Render("Priority") + "\n"
+		leftCol += renderKey("+", "increase") + "\n"
+		leftCol += renderKey("-", "decrease") + "\n"
+		leftCol += renderKey("!", "highest") + "\n"
+		leftCol += renderKey("0", "reset") + "\n"
 
-		// Right column: Actions + General
+		// Right column: Actions + Search + General
 		rightCol := headerStyle.Render("Actions") + "\n"
 		rightCol += renderKey("space", "toggle") + "\n"
 		rightCol += renderKey("u", "undo") + "\n"
@@ -838,6 +840,10 @@ func (m model) View() string {
 		rightCol += renderKey("e", "edit") + "\n"
 		rightCol += renderKey("d", "delete") + "\n"
 		rightCol += renderKey("r", "refresh") + "\n"
+		rightCol += "\n"
+		rightCol += headerStyle.Render("Search") + "\n"
+		rightCol += renderKey("/", "search") + "\n"
+		rightCol += renderKey("esc", "exit") + "\n"
 		rightCol += "\n"
 		rightCol += headerStyle.Render("General") + "\n"
 		rightCol += renderKey("?", "help") + "\n"
