@@ -83,7 +83,7 @@ func scanVault(vaultPath string) ([]string, error) {
 			return err
 		}
 
-		if info.IsDir() && strings.HasPrefix(info.Name(), ".") {
+		if info.IsDir() && strings.HasPrefix(info.Name(), ".") && path != vaultPath {
 			return filepath.SkipDir
 		}
 
