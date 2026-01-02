@@ -233,13 +233,31 @@ func main() {
 			allTasks = append(allTasks, tasks...)
 		}
 	} else {
-		// Vault mode: use loader for potentially large vaults
+		// Vault mode: scan recursively
 		useCache := !*listOnly
 		var scanErr error
-		files, allTasks, cache, scanErr = RunWithLoaderProgress(resolvedVault, useCache)
-		if scanErr != nil {
-			fmt.Printf("Error scanning vault: %v\n", scanErr)
-			os.Exit(1)
+
+		if *listOnly {
+			// Non-interactive mode: scan without loader TUI
+			files, scanErr = scanVault(resolvedVault)
+			if scanErr != nil {
+				fmt.Printf("Error scanning vault: %v\n", scanErr)
+				os.Exit(1)
+			}
+			for _, file := range files {
+				tasks, err := parseFile(file)
+				if err != nil {
+					continue
+				}
+				allTasks = append(allTasks, tasks...)
+			}
+		} else {
+			// Interactive mode: use loader for potentially large vaults
+			files, allTasks, cache, scanErr = RunWithLoaderProgress(resolvedVault, useCache)
+			if scanErr != nil {
+				fmt.Printf("Error scanning vault: %v\n", scanErr)
+				os.Exit(1)
+			}
 		}
 	}
 
