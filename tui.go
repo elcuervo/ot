@@ -18,7 +18,7 @@ const (
 	minVisibleHeight    = 3
 	maxInputWidth       = 70
 	minInputWidth       = 30
-	prioritySaveDebounce = 120 * time.Millisecond
+	prioritySaveDebounce = 500 * time.Millisecond
 )
 
 type prioritySaveMsg struct {
