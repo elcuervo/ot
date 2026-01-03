@@ -21,10 +21,10 @@ nix-install:
   nix profile remove ot 2>/dev/null || true
   nix profile add .#ot --refresh --no-substitute
 
-tag version:
+tag version=`cat VERSION`:
   git tag "v{{version}}"
 
-release version:
+release version=`cat VERSION`:
   git tag "v{{version}}"
   git push origin "v{{version}}"
 
