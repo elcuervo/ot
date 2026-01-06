@@ -1461,6 +1461,10 @@ func (m model) View() string {
 		taskIndex := 0
 
 		for _, section := range m.sections {
+			if len(section.Tasks) == 0 {
+				continue
+			}
+
 			if section.Name != "" {
 				count := len(section.Tasks)
 				countText := countStyle.Render(fmt.Sprintf(" (%d)", count))
@@ -1470,18 +1474,13 @@ func (m model) View() string {
 				})
 			}
 
-			if len(section.Tasks) == 0 {
-				lines = append(lines, viewLine{
-					content:   fileStyle.Render("  (no matching tasks)"),
-					taskIndex: -1,
-				})
-
-				continue
-			}
-
 			firstGroup := true
 
 			for _, group := range section.Groups {
+				if len(group.Tasks) == 0 {
+					continue
+				}
+
 				if section.Query.GroupBy != "" && group.Name != "" {
 					if !firstGroup {
 						lines = append(lines, viewLine{

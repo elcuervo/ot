@@ -354,17 +354,19 @@ func main() {
 	if *listOnly {
 		fmt.Printf("Found %d task(s):\n\n", totalTasks)
 		for _, section := range sections {
+			if len(section.Tasks) == 0 {
+				continue
+			}
+
 			if section.Name != "" {
 				fmt.Printf("## %s (%d)\n", section.Name, len(section.Tasks))
 			}
 
-			if len(section.Tasks) == 0 {
-				fmt.Println("(no matching tasks)")
-				fmt.Println()
-				continue
-			}
-
 			for _, group := range section.Groups {
+				if len(group.Tasks) == 0 {
+					continue
+				}
+
 				if section.Query.GroupBy != "" && group.Name != "" {
 					fmt.Printf("### %s\n", group.Name)
 				}
