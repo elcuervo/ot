@@ -68,8 +68,7 @@ var (
 
 	sectionStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(accentColor).
-			MarginTop(1)
+			Foreground(accentColor)
 
 	countStyle = lipgloss.NewStyle().
 			Foreground(subtleColor)
