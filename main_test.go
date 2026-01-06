@@ -767,7 +767,7 @@ func TestResolveVaultPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := resolveVaultPath(tt.input)
+			got, err := resolveVaultPath(tt.input, "")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("resolveVaultPath() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -946,7 +946,7 @@ func TestResolveProfilePaths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resolved, err := resolveProfilePaths("test", tt.profile)
+			resolved, err := resolveProfilePaths("test", tt.profile, "")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("resolveProfilePaths() error = %v, wantErr %v", err, tt.wantErr)
 				return

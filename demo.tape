@@ -98,6 +98,40 @@ Sleep 500ms
 Type "q"
 Sleep 600ms
 
+# === TABBED MODE ===
+Type "ot -c ./examples/config.toml"
+Sleep 500ms
+Enter
+Sleep 2.5s
+
+# Switch between tabs
+Tab
+Sleep 800ms
+Tab
+Sleep 800ms
+Tab
+Sleep 800ms
+
+# Navigate in a tab
+Type "jj"
+Sleep 400ms
+Space
+Sleep 800ms
+
+# Switch back
+Shift+Tab
+Sleep 800ms
+
+# Show help
+Type "?"
+Sleep 1.5s
+Escape
+Sleep 600ms
+
+# Quit tabbed mode
+Type "q"
+Sleep 600ms
+
 # === GLOB PATTERNS ===
 Type "ot --list './examples/project-*/todo.md'"
 Sleep 500ms
@@ -105,7 +139,7 @@ Enter
 Sleep 2.5s
 
 # === INLINE QUERIES ===
-Type "ot --list ./examples/vault -q 'due before 2026-01-01'"
+Type "ot --list ./examples/vault -q 'due before 2026-02-01'"
 Sleep 500ms
 Enter
 Sleep 2s

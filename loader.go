@@ -52,7 +52,7 @@ type loaderModel struct {
 func newLoaderModel() loaderModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	s.Style = loaderTitleStyle
 
 	return loaderModel{
 		spinner:   s,
@@ -109,34 +109,24 @@ func (m loaderModel) View() string {
 
 	var b strings.Builder
 
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("205"))
-
-	dimStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241"))
-
-	countStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("212"))
-
-	b.WriteString(titleStyle.Render("ot") + " ")
+	b.WriteString(loaderTitleStyle.Render("ot") + " ")
 	b.WriteString(m.spinner.View() + " ")
 
 	switch m.progress.Phase {
 	case "scanning":
 		b.WriteString("Scanning vault...")
 		if m.progress.FilesFound > 0 {
-			b.WriteString(countStyle.Render(fmt.Sprintf(" %d files", m.progress.FilesFound)))
+			b.WriteString(loaderCountStyle.Render(fmt.Sprintf(" %d files", m.progress.FilesFound)))
 		}
 	case "parsing":
 		b.WriteString("Parsing files...")
 		if m.progress.FilesParsed > 0 && m.progress.FilesFound > 0 {
 			pct := float64(m.progress.FilesParsed) / float64(m.progress.FilesFound) * 100
-			b.WriteString(countStyle.Render(fmt.Sprintf(" %d/%d", m.progress.FilesParsed, m.progress.FilesFound)))
-			b.WriteString(dimStyle.Render(fmt.Sprintf(" (%.0f%%)", pct)))
+			b.WriteString(loaderCountStyle.Render(fmt.Sprintf(" %d/%d", m.progress.FilesParsed, m.progress.FilesFound)))
+			b.WriteString(dimTextStyle.Render(fmt.Sprintf(" (%.0f%%)", pct)))
 		}
 		if m.progress.TasksFound > 0 {
-			b.WriteString(dimStyle.Render(fmt.Sprintf(" • %d tasks", m.progress.TasksFound)))
+			b.WriteString(dimTextStyle.Render(fmt.Sprintf(" • %d tasks", m.progress.TasksFound)))
 		}
 	default:
 		b.WriteString("Loading...")
@@ -151,7 +141,7 @@ func (m loaderModel) View() string {
 		if len(file) > maxLen {
 			file = "..." + file[len(file)-maxLen+3:]
 		}
-		b.WriteString("\n" + dimStyle.Render(file))
+		b.WriteString("\n" + dimTextStyle.Render(file))
 	}
 
 	content := b.String()
