@@ -99,13 +99,7 @@ Type "q"
 Sleep 600ms
 
 # === TABBED MODE ===
-# Set up config for tabbed demo
-Type "mkdir -p ~/.config/ot && cp ./examples/config.toml ~/.config/ot/config.toml"
-Sleep 300ms
-Enter
-Sleep 500ms
-
-Type "ot"
+Type "ot -c ./examples/config.toml"
 Sleep 500ms
 Enter
 Sleep 2.5s
@@ -137,12 +131,6 @@ Sleep 600ms
 # Quit tabbed mode
 Type "q"
 Sleep 600ms
-
-# Cleanup config
-Type "rm ~/.config/ot/config.toml"
-Sleep 300ms
-Enter
-Sleep 500ms
 
 # === GLOB PATTERNS ===
 Type "ot --list './examples/project-*/todo.md'"
