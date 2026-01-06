@@ -4,16 +4,17 @@ import "github.com/charmbracelet/lipgloss"
 
 // Unified color palette
 var (
-	primaryColor   = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-	accentColor    = lipgloss.AdaptiveColor{Light: "#FF79C6", Dark: "#FF79C6"}
-	barBackground  = lipgloss.AdaptiveColor{Light: "#F2F2F2", Dark: "#2A2A2A"}
+	primaryColor   = lipgloss.Color("75")
+	accentColor    = lipgloss.Color("205")
+	barBackground  = lipgloss.Color("233")
+	tabBackground  = lipgloss.Color("233")
 	barColor       = lipgloss.NewStyle().Background(barBackground)
-	mutedColor     = lipgloss.Color("241")
+	mutedColor     = lipgloss.Color("242")
 	subtleColor    = lipgloss.Color("245")
 	warningColor   = lipgloss.Color("214")
 	dangerColor    = lipgloss.Color("196")
-	successColor   = lipgloss.Color("46")
-	highlightColor = lipgloss.Color("212")
+	successColor   = lipgloss.Color("41")
+	highlightColor = lipgloss.Color("213")
 )
 
 var (
@@ -105,16 +106,16 @@ var (
 	// Tab bar styles - minimal single-line tabs
 	activeTabStyle = lipgloss.NewStyle().
 			Foreground(primaryColor).
-			Background(barBackground).
+			Background(tabBackground).
 			Bold(true)
 
 	inactiveTabStyle = lipgloss.NewStyle().
 				Foreground(subtleColor).
-				Background(barBackground)
+				Background(tabBackground)
 
 	tabSeparatorStyle = lipgloss.NewStyle().
 				Foreground(mutedColor).
-				Background(barBackground)
+				Background(tabBackground)
 
 	// Help bar styles - persistent bottom bar
 	helpBarStyle = lipgloss.NewStyle().
