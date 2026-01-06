@@ -107,4 +107,21 @@ var (
 
 	tabSeparatorStyle = lipgloss.NewStyle().
 				Foreground(mutedColor)
+
+	// Help bar styles - persistent bottom bar
+	helpBarStyle = lipgloss.NewStyle().
+			Foreground(subtleColor)
+
+	helpBarKeyStyle = lipgloss.NewStyle().
+			Foreground(primaryColor).
+			Bold(true)
+
+	helpBarDescStyle = lipgloss.NewStyle().
+				Foreground(subtleColor)
+
+	helpBarSeparatorStyle = lipgloss.NewStyle().
+				Foreground(mutedColor)
+
+	helpBarInfoStyle = lipgloss.NewStyle().
+				Foreground(mutedColor)
 )

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -14,7 +15,6 @@ import (
 const (
 	defaultWindowHeight = 24
 	defaultWindowWidth  = 80
-	reservedUILines     = 5
 	minVisibleHeight    = 3
 	maxInputWidth       = 70
 	minInputWidth       = 30
@@ -58,6 +58,7 @@ type model struct {
 	windowHeight int
 	windowWidth  int
 	aboutOpen    bool
+	viewport     viewport.Model
 
 	searching        bool
 	searchQuery      string
@@ -115,6 +116,7 @@ func newModel(sections []QuerySection, vaultPath string, titleName string, query
 		queries:           queries,
 		windowHeight:      defaultWindowHeight,
 		windowWidth:       defaultWindowWidth,
+		viewport:         viewport.New(defaultWindowWidth, defaultWindowHeight),
 		taskToSection:     taskToSection,
 		taskToGroup:       taskToGroup,
 		editorMode:        editorMode,
@@ -132,6 +134,7 @@ func newModelWithTabs(tabs []ProfileTab) model {
 		return model{
 			windowHeight:        defaultWindowHeight,
 			windowWidth:         defaultWindowWidth,
+			viewport:            viewport.New(defaultWindowWidth, defaultWindowHeight),
 			selfModifiedFiles:   make(map[string]time.Time),
 			recentlyToggled:     make(map[string]time.Time),
 			prioritySavePending: make(map[string]time.Time),
@@ -169,6 +172,7 @@ func newModelWithTabs(tabs []ProfileTab) model {
 		queries:             firstTab.Queries,
 		windowHeight:        defaultWindowHeight,
 		windowWidth:         defaultWindowWidth,
+		viewport:           viewport.New(defaultWindowWidth, defaultWindowHeight),
 		taskToSection:       taskToSection,
 		taskToGroup:         taskToGroup,
 		editorMode:          firstTab.Profile.EditorMode,
@@ -273,6 +277,90 @@ func (m model) renderTabBar() string {
 	}
 
 	return strings.Join(tabs, sep)
+}
+
+func (m model) renderHelpBar(rightInfo string) string {
+	sep := helpBarSeparatorStyle.Render(" • ")
+	var items []string
+
+	// Context-sensitive help hints
+	if m.searching {
+		items = append(items, helpBarKeyStyle.Render("esc")+helpBarDescStyle.Render(" exit"))
+		items = append(items, helpBarKeyStyle.Render("enter")+helpBarDescStyle.Render(" select"))
+	} else {
+		items = append(items, helpBarKeyStyle.Render("↑↓")+helpBarDescStyle.Render(" nav"))
+		items = append(items, helpBarKeyStyle.Render("space")+helpBarDescStyle.Render(" toggle"))
+		items = append(items, helpBarKeyStyle.Render("/")+helpBarDescStyle.Render(" search"))
+		if m.tabsEnabled && len(m.tabs) > 1 {
+			items = append(items, helpBarKeyStyle.Render("tab")+helpBarDescStyle.Render(" switch"))
+		}
+		items = append(items, helpBarKeyStyle.Render("?")+helpBarDescStyle.Render(" help"))
+	}
+
+	leftPart := strings.Join(items, sep)
+
+	if rightInfo == "" {
+		return helpBarStyle.Render(leftPart)
+	}
+
+	rightPart := helpBarInfoStyle.Render(rightInfo)
+	spacing := m.windowWidth - lipgloss.Width(leftPart) - lipgloss.Width(rightPart) - 2
+	if spacing < 2 {
+		spacing = 2
+	}
+
+	return helpBarStyle.Render(leftPart + strings.Repeat(" ", spacing) + rightPart)
+}
+
+func (m model) buildViewport(lines []viewLine, cursorLineIdx int, contentHeight int) (string, int, int, int) {
+	if contentHeight < minVisibleHeight {
+		contentHeight = minVisibleHeight
+	}
+
+	width := m.windowWidth
+	if width <= 0 {
+		width = defaultWindowWidth
+	}
+
+	vp := m.viewport
+	vp.Width = width
+	vp.Height = contentHeight
+
+	if len(lines) == 0 {
+		vp.SetContent("")
+		view := lipgloss.NewStyle().Width(width).Height(contentHeight).Render(vp.View())
+		return view, 0, 0, 0
+	}
+
+	contentLines := make([]string, len(lines))
+	lineHeights := make([]int, len(lines))
+	totalRenderedLines := 0
+
+	for i, line := range lines {
+		contentLines[i] = line.content
+		height := 1 + strings.Count(line.content, "\n")
+		lineHeights[i] = height
+		totalRenderedLines += height
+	}
+
+	if cursorLineIdx < 0 {
+		cursorLineIdx = 0
+	}
+	if cursorLineIdx >= len(lines) {
+		cursorLineIdx = len(lines) - 1
+	}
+
+	startLine, endLine := calculateVisibleRange(cursorLineIdx, lineHeights, contentHeight)
+	startRow := 0
+	for i := 0; i < startLine; i++ {
+		startRow += lineHeights[i]
+	}
+
+	vp.SetContent(strings.Join(contentLines, "\n"))
+	vp.YOffset = startRow
+
+	view := lipgloss.NewStyle().Width(width).Height(contentHeight).Render(vp.View())
+	return view, startLine, endLine, totalRenderedLines
 }
 
 func (m *model) filterBySearch() {
@@ -558,6 +646,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.windowHeight = msg.Height
 		m.windowWidth = msg.Width
+		m.viewport.Width = msg.Width
+		m.viewport.Height = msg.Height
 
 	case editorFinishedMsg:
 		if msg.err != nil {
@@ -955,8 +1045,6 @@ func (m model) View() string {
 		return "Goodbye!\n"
 	}
 
-	var b strings.Builder
-
 	if m.aboutOpen {
 		sha := strings.TrimSpace(buildSHA)
 		if sha == "" {
@@ -1170,29 +1258,49 @@ func (m model) View() string {
 	if modeLabel != "" {
 		titleLine += " " + modeLabel
 	}
-	b.WriteString(titleLine + "\n")
 
+	var header strings.Builder
+	header.WriteString(titleLine + "\n")
 	if m.searching {
 		searchLabel := searchStyle.Render("/")
 		searchInput := searchInputStyle.Render(m.searchQuery)
 		if m.searchNavigating {
-			b.WriteString(searchLabel + searchInput + "\n")
+			header.WriteString(searchLabel + searchInput + "\n")
 		} else {
 			cursorChar := searchStyle.Render("_")
-			b.WriteString(searchLabel + searchInput + cursorChar + "\n")
+			header.WriteString(searchLabel + searchInput + cursorChar + "\n")
 		}
 	} else {
-		b.WriteString("\n")
+		header.WriteString("\n")
+	}
+
+	headerStr := header.String()
+	headerLines := strings.Count(headerStr, "\n")
+	contentHeight := m.windowHeight - headerLines - 1
+	if contentHeight < minVisibleHeight {
+		contentHeight = minVisibleHeight
 	}
 
 	if len(m.tasks) == 0 {
-		b.WriteString("\nNo tasks found.\n")
-	} else if m.searching && m.searchQuery != "" {
+		lines := []viewLine{
+			{content: "No tasks found.", taskIndex: -1},
+		}
+		viewportView, _, _, _ := m.buildViewport(lines, 0, contentHeight)
+		return headerStr + viewportView + "\n" + m.renderHelpBar("")
+	}
+
+	if m.searching && m.searchQuery != "" {
 		tasks := m.activeTasks()
 
 		if len(tasks) == 0 {
-			b.WriteString(fileStyle.Render("  No matching tasks\n"))
-		} else {
+			lines := []viewLine{
+				{content: fileStyle.Render("  No matching tasks"), taskIndex: -1},
+			}
+			viewportView, _, _, _ := m.buildViewport(lines, 0, contentHeight)
+			return headerStr + viewportView + "\n" + m.renderHelpBar("0 matches")
+		}
+
+		{
 			var lines []viewLine
 
 			query := strings.ToLower(m.searchQuery)
@@ -1234,36 +1342,12 @@ func (m model) View() string {
 				})
 			}
 
-			visibleHeight := m.windowHeight - reservedUILines - 1
-			if visibleHeight < minVisibleHeight {
-				visibleHeight = minVisibleHeight
-			}
-
-			lineHeights := make([]int, len(lines))
-			totalRenderedLines := 0
-			for i, line := range lines {
-				height := 1 + strings.Count(line.content, "\n")
-				lineHeights[i] = height
-				totalRenderedLines += height
-			}
-
-			startLine, endLine := calculateVisibleRange(m.cursor, lineHeights, visibleHeight)
-
-			for i := startLine; i < endLine; i++ {
-				b.WriteString(lines[i].content + "\n")
-			}
-
-			helpText := "? help"
-			matchInfo := fmt.Sprintf("[%d matches]", len(tasks))
-			padding := m.windowWidth - len(helpText) - len(matchInfo) - 1
-			if padding < 2 {
-				padding = 2
-			}
-			helpText = helpText + strings.Repeat(" ", padding) + matchInfo
-			help := helpStyle.Render(helpText)
-			b.WriteString("\n" + help)
+			viewportView, _, _, _ := m.buildViewport(lines, m.cursor, contentHeight)
+			return headerStr + viewportView + "\n" + m.renderHelpBar(fmt.Sprintf("%d matches", len(tasks)))
 		}
-	} else {
+	}
+
+	{
 		var lines []viewLine
 		taskIndex := 0
 
@@ -1342,21 +1426,6 @@ func (m model) View() string {
 			}
 		}
 
-		visibleHeight := m.windowHeight - reservedUILines
-
-		if visibleHeight < minVisibleHeight {
-			visibleHeight = minVisibleHeight
-		}
-
-		lineHeights := make([]int, len(lines))
-		totalRenderedLines := 0
-
-		for i, line := range lines {
-			height := 1 + strings.Count(line.content, "\n")
-			lineHeights[i] = height
-			totalRenderedLines += height
-		}
-
 		cursorLineIdx := 0
 
 		for i, line := range lines {
@@ -1366,32 +1435,13 @@ func (m model) View() string {
 			}
 		}
 
-		startLine, endLine := calculateVisibleRange(cursorLineIdx, lineHeights, visibleHeight)
-
-		for i := startLine; i < endLine; i++ {
-			b.WriteString(lines[i].content + "\n")
+		viewportView, startLine, endLine, totalRenderedLines := m.buildViewport(lines, cursorLineIdx, contentHeight)
+		var scrollInfo string
+		if totalRenderedLines > contentHeight {
+			scrollInfo = fmt.Sprintf("%d-%d of %d", startLine+1, endLine, len(lines))
 		}
-
-		helpText := "? help"
-
-		if totalRenderedLines > visibleHeight {
-			scrollInfo := fmt.Sprintf("[%d-%d of %d]", startLine+1, endLine, len(lines))
-			padding := m.windowWidth - len(helpText) - len(scrollInfo) - 1
-			if padding < 2 {
-				padding = 2
-			}
-			helpText = helpText + strings.Repeat(" ", padding) + scrollInfo
-		}
-		help := helpStyle.Render(helpText)
-		b.WriteString("\n" + help)
+		return headerStr + viewportView + "\n" + m.renderHelpBar(scrollInfo)
 	}
-
-	if len(m.tasks) == 0 {
-		help := helpStyle.Render("? help")
-		b.WriteString("\n" + help)
-	}
-
-	return b.String()
 }
 
 // calculateVisibleRange returns start/end indices for visible lines
@@ -1402,8 +1452,8 @@ func calculateVisibleRange(cursorLineIdx int, lineHeights []int, visibleHeight i
 		return 0, 0
 	}
 
-	totalHeight := 0
 	cursorPos := 0
+	totalHeight := 0
 
 	for i, h := range lineHeights {
 		if i < cursorLineIdx {
@@ -1416,16 +1466,15 @@ func calculateVisibleRange(cursorLineIdx int, lineHeights []int, visibleHeight i
 		return 0, totalLines
 	}
 
-	targetStart := cursorPos - visibleHeight/2
-
-	if targetStart < 0 {
-		targetStart = 0
+	startRow := cursorPos - (visibleHeight - 1)
+	if startRow < 0 {
+		startRow = 0
 	}
 
 	pos := 0
 
 	for i, h := range lineHeights {
-		if pos >= targetStart {
+		if pos+h > startRow {
 			startLine = i
 			break
 		}
@@ -1439,43 +1488,6 @@ func calculateVisibleRange(cursorLineIdx int, lineHeights []int, visibleHeight i
 			break
 		}
 
-		rendered += lineHeights[i]
-		endLine = i + 1
-	}
-
-	if cursorLineIdx >= endLine {
-		endLine = cursorLineIdx + 1
-		rendered = 0
-
-		for i := endLine - 1; i >= 0; i-- {
-			if rendered+lineHeights[i] > visibleHeight {
-				startLine = i + 1
-				break
-			}
-
-			rendered += lineHeights[i]
-			startLine = i
-		}
-	}
-
-	rendered = 0
-
-	for i := startLine; i < totalLines; i++ {
-		rendered += lineHeights[i]
-	}
-
-	for startLine > 0 && rendered < visibleHeight {
-		startLine--
-		rendered += lineHeights[startLine]
-	}
-
-	rendered = 0
-	endLine = startLine
-
-	for i := startLine; i < totalLines; i++ {
-		if rendered+lineHeights[i] > visibleHeight {
-			break
-		}
 		rendered += lineHeights[i]
 		endLine = i + 1
 	}
