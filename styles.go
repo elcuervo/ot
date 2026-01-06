@@ -139,4 +139,45 @@ var (
 
 	helpBarInfoStyle = lipgloss.NewStyle().
 				Foreground(mutedColor)
+
+	// Help dialog styles (about screen)
+	helpDialogKeyStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("212"))
+
+	helpDialogDescStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("245"))
+
+	helpDialogHeaderStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("99"))
+
+	dimTextStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241"))
+
+	// Button styles (delete dialog)
+	buttonDangerStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("231")).
+				Background(lipgloss.Color("196")).
+				Padding(0, 2)
+
+	buttonNeutralStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("231")).
+				Background(lipgloss.Color("240")).
+				Padding(0, 2)
+
+	dangerBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("196")).
+			Padding(1, 2)
+
+	// Loader styles
+	loaderTitleStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("205"))
+
+	loaderCountStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("212"))
 )

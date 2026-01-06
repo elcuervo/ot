@@ -11,7 +11,7 @@ var glamourRenderer *glamour.TermRenderer
 
 func init() {
 	glamourRenderer, _ = glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
+		glamour.WithStandardStyle("dracula"),
 		glamour.WithWordWrap(0),
 	)
 }
