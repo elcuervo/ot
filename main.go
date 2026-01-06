@@ -60,6 +60,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize renderer with theme from config
+	if cfg.Theme != "" {
+		initRenderer(cfg.Theme)
+	}
+
 	// Check for tabs mode: enabled in config, no args, no specific profile flag, not list mode
 	if cfg.Tabs && len(args) == 0 && *profileName == "" && !*listOnly && len(cfg.Profiles) > 1 {
 		tabs, err := loadAllProfileTabs(cfg)

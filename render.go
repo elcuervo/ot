@@ -7,11 +7,20 @@ import (
 	"github.com/charmbracelet/glamour"
 )
 
+const defaultTheme = "dracula"
+
 var glamourRenderer *glamour.TermRenderer
 
 func init() {
+	initRenderer(defaultTheme)
+}
+
+func initRenderer(theme string) {
+	if theme == "" {
+		theme = defaultTheme
+	}
 	glamourRenderer, _ = glamour.NewTermRenderer(
-		glamour.WithStandardStyle("dracula"),
+		glamour.WithStandardStyle(theme),
 		glamour.WithWordWrap(0),
 	)
 }
