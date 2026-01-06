@@ -2,25 +2,37 @@ package main
 
 import "github.com/charmbracelet/lipgloss"
 
+// Unified color palette
+var (
+	primaryColor   = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
+	accentColor    = lipgloss.AdaptiveColor{Light: "#FF79C6", Dark: "#FF79C6"}
+	mutedColor     = lipgloss.Color("241")
+	subtleColor    = lipgloss.Color("245")
+	warningColor   = lipgloss.Color("214")
+	dangerColor    = lipgloss.Color("196")
+	successColor   = lipgloss.Color("46")
+	highlightColor = lipgloss.Color("212")
+)
+
 var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("170"))
+			Foreground(accentColor)
 
 	titleNameStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("99"))
+			Foreground(primaryColor)
 
 	searchModeStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("231")).
-			Background(lipgloss.Color("160")).
+			Background(dangerColor).
 			Padding(0, 1)
 
 	resultsModeStyle = lipgloss.NewStyle().
 				Bold(true).
 				Foreground(lipgloss.Color("231")).
-				Background(lipgloss.Color("214")).
+				Background(warningColor).
 				Padding(0, 1)
 
 	aboutStyle = lipgloss.NewStyle().
@@ -29,59 +41,70 @@ var (
 
 	aboutBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("241")).
+			BorderForeground(mutedColor).
 			Padding(1, 2)
 
 	selectedStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("212")).
+			Foreground(highlightColor).
 			Bold(true)
 
 	doneStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
+			Foreground(mutedColor).
 			Strikethrough(true)
 
 	fileStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("243"))
 
 	helpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
+			Foreground(mutedColor).
 			MarginTop(1)
 
 	cursorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("212"))
+			Foreground(highlightColor)
 
 	groupStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("99"))
+			Foreground(primaryColor)
 
 	sectionStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("205")).
+			Foreground(accentColor).
 			MarginTop(1)
 
 	countStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("245"))
+			Foreground(subtleColor)
 
 	searchStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("212")).
+			Foreground(highlightColor).
 			Bold(true)
 
 	matchStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("214")).
+			Foreground(warningColor).
 			Bold(true)
 
 	searchInputStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("170"))
+				Foreground(accentColor)
 
 	confirmStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("46"))
+			Foreground(successColor)
 
 	cancelStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("196"))
+			Foreground(dangerColor)
 
 	dangerStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("196"))
+			Foreground(dangerColor)
+
+	// Tab bar styles - minimal single-line tabs
+	activeTabStyle = lipgloss.NewStyle().
+			Foreground(primaryColor).
+			Bold(true)
+
+	inactiveTabStyle = lipgloss.NewStyle().
+				Foreground(subtleColor)
+
+	tabSeparatorStyle = lipgloss.NewStyle().
+				Foreground(mutedColor)
 )

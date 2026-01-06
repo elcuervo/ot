@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -57,6 +58,42 @@ func main() {
 	if err != nil {
 		fmt.Printf("Error loading config: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Check for tabs mode: enabled in config, no args, no specific profile flag, not list mode
+	if cfg.Tabs && len(args) == 0 && *profileName == "" && !*listOnly && len(cfg.Profiles) > 1 {
+		tabs, err := loadAllProfileTabs(cfg)
+		if err != nil {
+			fmt.Printf("Error loading profiles: %v\n", err)
+			os.Exit(1)
+		}
+
+		if len(tabs) > 0 {
+			m := newModelWithTabs(tabs)
+			p := tea.NewProgram(m, tea.WithAltScreen())
+
+			// Set program for all debouncers
+			for _, tab := range tabs {
+				if tab.Debouncer != nil {
+					tab.Debouncer.SetProgram(p)
+				}
+			}
+
+			// Cleanup watchers on exit
+			defer func() {
+				for _, tab := range tabs {
+					if tab.Watcher != nil {
+						tab.Watcher.Close()
+					}
+				}
+			}()
+
+			if _, err := p.Run(); err != nil {
+				fmt.Printf("Error running TUI: %v\n", err)
+				os.Exit(1)
+			}
+			os.Exit(0)
+		}
 	}
 
 	var resolvedVault, queryFile, titleName, editorMode string
@@ -362,4 +399,96 @@ func main() {
 		fmt.Printf("Error running TUI: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// loadAllProfileTabs loads all profiles as tabs for tabbed mode
+func loadAllProfileTabs(cfg Config) ([]ProfileTab, error) {
+	if len(cfg.Profiles) == 0 {
+		return nil, nil
+	}
+
+	// Sort profile names for consistent tab order
+	var names []string
+	for name := range cfg.Profiles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	// Put default profile first if it exists
+	if cfg.DefaultProfile != "" {
+		for i, name := range names {
+			if name == cfg.DefaultProfile {
+				names = append([]string{name}, append(names[:i], names[i+1:]...)...)
+				break
+			}
+		}
+	}
+
+	var tabs []ProfileTab
+	for _, name := range names {
+		profile := cfg.Profiles[name]
+		resolved, err := resolveProfilePaths(name, profile)
+		if err != nil {
+			fmt.Printf("Warning: skipping profile %q: %v\n", name, err)
+			continue
+		}
+
+		// Scan vault
+		_, allTasks, cache, scanErr := RunWithLoaderProgress(resolved.VaultPath, true)
+		if scanErr != nil {
+			fmt.Printf("Warning: skipping profile %q: %v\n", name, scanErr)
+			continue
+		}
+
+		// Resolve queries
+		var queries []*Query
+		if resolved.QueryIsFile {
+			queries, err = parseAllQueryBlocks(resolved.Query)
+			if err != nil {
+				queries = []*Query{{NotDone: true, SortBy: "priority"}}
+			}
+		} else if resolved.Query != "" {
+			queries, err = parseInlineQuery(resolved.Query)
+			if err != nil {
+				queries = []*Query{{NotDone: true, SortBy: "priority"}}
+			}
+		} else {
+			queries = []*Query{{NotDone: true, SortBy: "priority"}}
+		}
+
+		// Build sections
+		var sections []QuerySection
+		var tasks []*Task
+		for _, query := range queries {
+			filtered := filterTasks(allTasks, query)
+			groups := groupTasks(filtered, query.GroupBy, query.SortBy, resolved.VaultPath)
+			sections = append(sections, QuerySection{
+				Name:   query.Name,
+				Query:  query,
+				Groups: groups,
+				Tasks:  filtered,
+			})
+			tasks = append(tasks, filtered...)
+		}
+
+		// Create watcher
+		watcher, _ := NewWatcher(resolved.VaultPath)
+		var debouncer *Debouncer
+		if watcher != nil {
+			debouncer = NewDebouncer(150 * time.Millisecond)
+		}
+
+		tabs = append(tabs, ProfileTab{
+			Profile:   resolved,
+			Sections:  sections,
+			Tasks:     tasks,
+			Cursor:    0,
+			Cache:     cache,
+			Watcher:   watcher,
+			Debouncer: debouncer,
+			Queries:   queries,
+		})
+	}
+
+	return tabs, nil
 }

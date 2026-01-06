@@ -13,6 +13,7 @@ import (
 type Config struct {
 	DefaultProfile string             `toml:"default_profile"`
 	Profiles       map[string]Profile `toml:"profiles"`
+	Tabs           bool               `toml:"tabs"`
 }
 
 type Profile struct {

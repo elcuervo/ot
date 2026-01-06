@@ -27,8 +27,25 @@ type prioritySaveMsg struct {
 	task *Task
 }
 
+// ProfileTab holds per-profile state for tabbed mode
+type ProfileTab struct {
+	Profile   *ResolvedProfile
+	Sections  []QuerySection
+	Tasks     []*Task
+	Cursor    int
+	Cache     *TaskCache
+	Watcher   *Watcher
+	Debouncer *Debouncer
+	Queries   []*Query
+}
+
 // model is the BubbleTea model
 type model struct {
+	// Tab mode (when multiple profiles)
+	tabsEnabled bool
+	tabs        []ProfileTab
+	activeTab   int
+
 	sections     []QuerySection
 	tasks        []*Task
 	cursor       int
@@ -110,12 +127,152 @@ func newModel(sections []QuerySection, vaultPath string, titleName string, query
 	}
 }
 
+func newModelWithTabs(tabs []ProfileTab) model {
+	if len(tabs) == 0 {
+		return model{
+			windowHeight:        defaultWindowHeight,
+			windowWidth:         defaultWindowWidth,
+			selfModifiedFiles:   make(map[string]time.Time),
+			recentlyToggled:     make(map[string]time.Time),
+			prioritySavePending: make(map[string]time.Time),
+		}
+	}
+
+	// Build task mappings for first tab
+	taskToSection := make(map[*Task]string)
+	taskToGroup := make(map[*Task]string)
+	firstTab := tabs[0]
+	for _, s := range firstTab.Sections {
+		for _, g := range s.Groups {
+			for _, task := range g.Tasks {
+				taskToSection[task] = s.Name
+				taskToGroup[task] = g.Name
+			}
+		}
+	}
+
+	queryFile := ""
+	if firstTab.Profile.QueryIsFile {
+		queryFile = firstTab.Profile.Query
+	}
+
+	return model{
+		tabsEnabled:         true,
+		tabs:                tabs,
+		activeTab:           0,
+		sections:            firstTab.Sections,
+		tasks:               firstTab.Tasks,
+		cursor:              firstTab.Cursor,
+		vaultPath:           firstTab.Profile.VaultPath,
+		titleName:           firstTab.Profile.Name,
+		queryFile:           queryFile,
+		queries:             firstTab.Queries,
+		windowHeight:        defaultWindowHeight,
+		windowWidth:         defaultWindowWidth,
+		taskToSection:       taskToSection,
+		taskToGroup:         taskToGroup,
+		editorMode:          firstTab.Profile.EditorMode,
+		cache:               firstTab.Cache,
+		watcher:             firstTab.Watcher,
+		debouncer:           firstTab.Debouncer,
+		selfModifiedFiles:   make(map[string]time.Time),
+		recentlyToggled:     make(map[string]time.Time),
+		prioritySavePending: make(map[string]time.Time),
+	}
+}
+
 func (m model) Init() tea.Cmd {
 	cmds := []tea.Cmd{tea.WindowSize()}
-	if m.watcher != nil {
+	if m.tabsEnabled {
+		// Start watchers for all tabs
+		for _, tab := range m.tabs {
+			if tab.Watcher != nil {
+				cmds = append(cmds, tab.Watcher.WatchCmd())
+			}
+		}
+	} else if m.watcher != nil {
 		cmds = append(cmds, m.watcher.WatchCmd())
 	}
 	return tea.Batch(cmds...)
+}
+
+func (m *model) switchTab(newTab int) {
+	if !m.tabsEnabled || newTab < 0 || newTab >= len(m.tabs) || newTab == m.activeTab {
+		return
+	}
+
+	// Save current tab state
+	m.tabs[m.activeTab].Cursor = m.cursor
+	m.tabs[m.activeTab].Sections = m.sections
+	m.tabs[m.activeTab].Tasks = m.tasks
+
+	// Switch to new tab
+	m.activeTab = newTab
+	tab := m.tabs[newTab]
+
+	// Load new tab state
+	m.sections = tab.Sections
+	m.tasks = tab.Tasks
+	m.cursor = tab.Cursor
+	m.vaultPath = tab.Profile.VaultPath
+	m.titleName = tab.Profile.Name
+	m.queries = tab.Queries
+	m.editorMode = tab.Profile.EditorMode
+	m.cache = tab.Cache
+	m.watcher = tab.Watcher
+	m.debouncer = tab.Debouncer
+
+	if tab.Profile.QueryIsFile {
+		m.queryFile = tab.Profile.Query
+	} else {
+		m.queryFile = ""
+	}
+
+	// Rebuild task mappings for new tab
+	m.taskToSection = make(map[*Task]string)
+	m.taskToGroup = make(map[*Task]string)
+	for _, s := range m.sections {
+		for _, g := range s.Groups {
+			for _, task := range g.Tasks {
+				m.taskToSection[task] = s.Name
+				m.taskToGroup[task] = g.Name
+			}
+		}
+	}
+
+	// Reset search state
+	m.searching = false
+	m.searchNavigating = false
+	m.searchQuery = ""
+	m.filteredTasks = nil
+
+	// Ensure cursor is in bounds
+	if m.cursor >= len(m.tasks) {
+		if len(m.tasks) > 0 {
+			m.cursor = len(m.tasks) - 1
+		} else {
+			m.cursor = 0
+		}
+	}
+}
+
+func (m model) renderTabBar() string {
+	var tabs []string
+	sep := tabSeparatorStyle.Render(" │ ")
+
+	for i, tab := range m.tabs {
+		name := tab.Profile.Name
+		count := len(tab.Tasks)
+		label := fmt.Sprintf("%s (%d)", name, count)
+
+		if i == m.activeTab {
+			tabs = append(tabs, activeTabStyle.Render(label))
+		} else {
+			tabs = append(tabs, inactiveTabStyle.Render(label))
+		}
+	}
+
+	return strings.Join(tabs, sep)
 }
 
 func (m *model) filterBySearch() {
@@ -763,6 +920,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				task := m.tasks[m.cursor]
 				return m, m.setPriorityDebounced(task, PriorityNormal)
 			}
+
+		case "tab":
+			if m.tabsEnabled && len(m.tabs) > 1 {
+				m.switchTab((m.activeTab + 1) % len(m.tabs))
+			}
+
+		case "shift+tab":
+			if m.tabsEnabled && len(m.tabs) > 1 {
+				newTab := m.activeTab - 1
+				if newTab < 0 {
+					newTab = len(m.tabs) - 1
+				}
+				m.switchTab(newTab)
+			}
 		}
 	}
 
@@ -848,6 +1019,12 @@ func (m model) View() string {
 		rightCol += headerStyle.Render("General") + "\n"
 		rightCol += renderKey("?", "help") + "\n"
 		rightCol += renderKey("q", "quit") + "\n"
+		if m.tabsEnabled && len(m.tabs) > 1 {
+			rightCol += "\n"
+			rightCol += headerStyle.Render("Tabs") + "\n"
+			rightCol += renderKey("tab", "next") + "\n"
+			rightCol += renderKey("S-tab", "prev") + "\n"
+		}
 
 		// Join columns side by side
 		leftLines := strings.Split(leftCol, "\n")
@@ -970,10 +1147,8 @@ func (m model) View() string {
 		return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
 	}
 
-	titlePrefix := titleStyle.Render("ot → ")
-	titleName := titleNameStyle.Render(m.titleName)
+	// Build mode label if searching
 	modeLabel := ""
-
 	if m.searching {
 		if m.searchNavigating {
 			modeLabel = resultsModeStyle.Render("results")
@@ -982,7 +1157,16 @@ func (m model) View() string {
 		}
 	}
 
-	titleLine := titlePrefix + titleName
+	// Render header line
+	titlePrefix := titleStyle.Render("ot")
+	var titleLine string
+
+	if m.tabsEnabled && len(m.tabs) > 1 {
+		titleLine = titlePrefix + titleStyle.Render(" → ") + m.renderTabBar()
+	} else {
+		titleLine = titlePrefix + titleStyle.Render(" → ") + titleNameStyle.Render(m.titleName)
+	}
+
 	if modeLabel != "" {
 		titleLine += " " + modeLabel
 	}
