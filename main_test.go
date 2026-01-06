@@ -819,7 +819,7 @@ func TestValidateProfile(t *testing.T) {
 		{name: "valid profile", profile: Profile{Vault: "/v", Query: "q.md"}, wantErr: false},
 		{name: "empty vault", profile: Profile{Vault: "", Query: "q.md"}, wantErr: true, errField: "vault"},
 		{name: "whitespace vault", profile: Profile{Vault: "  ", Query: "q.md"}, wantErr: true, errField: "vault"},
-		{name: "empty query", profile: Profile{Vault: "/v", Query: ""}, wantErr: true, errField: "query"},
+		{name: "empty query", profile: Profile{Vault: "/v", Query: ""}, wantErr: false}, // Query is optional
 		{name: "both empty", profile: Profile{}, wantErr: true, errField: "vault"},
 	}
 

@@ -22,10 +22,11 @@ type Profile struct {
 }
 
 type ResolvedProfile struct {
-	Name       string
-	VaultPath  string
-	QueryPath  string
-	EditorMode string
+	Name        string
+	VaultPath   string
+	Query       string
+	QueryIsFile bool
+	EditorMode  string
 }
 
 type ProfileError struct {
@@ -61,10 +62,7 @@ func validateProfile(name string, p Profile) error {
 		return &ProfileError{Profile: name, Field: "vault", Err: ErrEmptyPath}
 	}
 
-	if strings.TrimSpace(p.Query) == "" {
-		return &ProfileError{Profile: name, Field: "query", Err: ErrEmptyPath}
-	}
-
+	// Query is optional - if empty, all tasks will be shown
 	return nil
 }
 
@@ -149,15 +147,25 @@ func resolveProfilePaths(name string, p Profile) (*ResolvedProfile, error) {
 		return nil, err
 	}
 
-	queryPath, err := resolveQueryPath(p.Query, vaultPath)
+	// Query is optional - if empty, all tasks will be shown
+	query := strings.TrimSpace(p.Query)
+	queryIsFile := false
 
-	if err != nil {
-		return nil, &ProfileError{Profile: name, Field: "query", Err: err}
+	if query != "" {
+		// Check if it's a file path (markdown file that exists)
+		queryPath, err := resolveQueryPath(query, vaultPath)
+		if err == nil {
+			queryPath = filepath.Clean(queryPath)
+			if info, statErr := os.Stat(queryPath); statErr == nil && !info.IsDir() {
+				// It's an existing file
+				query = queryPath
+				queryIsFile = true
+			}
+		}
+		// If not a file, query remains as inline query string
 	}
 
-	queryPath = filepath.Clean(queryPath)
-
-	return &ResolvedProfile{Name: name, VaultPath: vaultPath, QueryPath: queryPath, EditorMode: p.Editor}, nil
+	return &ResolvedProfile{Name: name, VaultPath: vaultPath, Query: query, QueryIsFile: queryIsFile, EditorMode: p.Editor}, nil
 }
 
 func configPath() (string, error) {

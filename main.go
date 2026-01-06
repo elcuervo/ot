@@ -147,9 +147,15 @@ func main() {
 			}
 
 			resolvedVault = resolved.VaultPath
-			queryFile = resolved.QueryPath
 			titleName = name
 			editorMode = resolved.EditorMode
+
+			if resolved.QueryIsFile {
+				queryFile = resolved.Query
+			} else if resolved.Query != "" {
+				queryStr = resolved.Query
+			}
+			// If both are empty, all tasks will be shown (no filter)
 		}
 	}
 
@@ -200,7 +206,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Resolve query: from flag, from profile, or default to "not done"
+	// Resolve query: from flag, from profile, or default
 	if queryStr != "" {
 		queries, err = resolveQuery(queryStr, resolvedVault)
 		if err != nil {
