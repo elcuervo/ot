@@ -8,6 +8,7 @@ var (
 	accentColor    = lipgloss.Color("205")
 	barBackground  = lipgloss.Color("233")
 	tabBackground  = lipgloss.Color("233")
+	tabActiveBackground = lipgloss.Color("235")
 	barColor       = lipgloss.NewStyle().Background(barBackground)
 	mutedColor     = lipgloss.Color("242")
 	subtleColor    = lipgloss.Color("245")
@@ -106,7 +107,7 @@ var (
 	// Tab bar styles - minimal single-line tabs
 	activeTabStyle = lipgloss.NewStyle().
 			Foreground(primaryColor).
-			Background(tabBackground).
+			Background(tabActiveBackground).
 			Bold(true)
 
 	inactiveTabStyle = lipgloss.NewStyle().
