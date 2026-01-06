@@ -20,6 +20,7 @@ const (
 	maxInputWidth        = 70
 	minInputWidth        = 30
 	prioritySaveDebounce = 500 * time.Millisecond
+	cursorCharacter      = "→"
 )
 
 type prioritySaveMsg struct {
@@ -281,17 +282,44 @@ func (m model) renderTabBar() string {
 }
 
 func (m model) renderHelpBar(rightInfo string) string {
+	return m.renderFooterRight(rightInfo, true)
+}
+
+func (m model) renderFooterRight(rightInfo string, applyInfoStyle bool) string {
 	if rightInfo == "" {
 		return helpBarStyle.Width(m.windowWidth).Render("")
 	}
 
-	rightPart := helpBarInfoStyle.Render(rightInfo)
+	rightPart := rightInfo
+	if applyInfoStyle {
+		rightPart = helpBarInfoStyle.Render(rightInfo)
+	}
 	spacing := m.windowWidth - lipgloss.Width(rightPart)
 	if spacing < 0 {
 		spacing = 0
 	}
 
 	return helpBarStyle.Width(m.windowWidth).Render(strings.Repeat(" ", spacing) + rightPart)
+}
+
+func (m model) renderFooterSplit(left, right string) string {
+	if left == "" && right == "" {
+		return helpBarStyle.Width(m.windowWidth).Render("")
+	}
+	leftWidth := lipgloss.Width(left)
+	rightWidth := lipgloss.Width(right)
+	spacing := m.windowWidth - leftWidth - rightWidth
+	if spacing < 0 {
+		spacing = 0
+	}
+
+	if right == "" {
+		gap := helpBarStyle.Render(strings.Repeat(" ", spacing))
+		return left + gap
+	}
+
+	gap := helpBarStyle.Render(strings.Repeat(" ", spacing))
+	return left + gap + right
 }
 
 func (m model) buildViewport(lines []viewLine, cursorLineIdx int, contentHeight int) (string, int, int, int) {
@@ -1330,10 +1358,6 @@ func (m model) View() string {
 		titleLine = titlePrefix + arrow + titleNameStyle.Render(m.titleName)
 	}
 
-	if modeLabel != "" {
-		titleLine += " " + modeLabel
-	}
-
 	headerLines := []string{titleLine}
 
 	windowHeight := m.windowHeight
@@ -1382,8 +1406,6 @@ func (m model) View() string {
 			searchLine = searchLabel + searchInput + cursorChar
 		}
 	}
-	searchLine = barColor.Width(m.windowWidth).Render(searchLine)
-
 	if len(m.tasks) == 0 {
 		lines := []viewLine{
 			{content: "No tasks found.", taskIndex: -1},
@@ -1391,7 +1413,7 @@ func (m model) View() string {
 		viewportView, _, _, _ := m.buildViewport(lines, 0, contentHeight)
 		footerLine := m.renderHelpBar("")
 		if m.searching {
-			footerLine = searchLine
+			footerLine = m.renderFooterSplit(searchLine, modeLabel)
 		}
 		footerView := buildFooterView([]string{footerLine}, footerHeight)
 		return lipgloss.JoinVertical(lipgloss.Left, headerView, viewportView, footerView)
@@ -1407,7 +1429,7 @@ func (m model) View() string {
 			viewportView, _, _, _ := m.buildViewport(lines, 0, contentHeight)
 			footerLine := m.renderHelpBar("0 matches")
 			if m.searching {
-				footerLine = searchLine
+				footerLine = m.renderFooterSplit(searchLine, modeLabel)
 			}
 			footerView := buildFooterView([]string{footerLine}, footerHeight)
 			return lipgloss.JoinVertical(lipgloss.Left, headerView, viewportView, footerView)
@@ -1421,7 +1443,7 @@ func (m model) View() string {
 			for i, task := range tasks {
 				cursor := " "
 				if m.cursor == i {
-					cursor = cursorStyle.Render(">")
+					cursor = cursorStyle.Render(cursorCharacter)
 				}
 
 				sectionName := m.taskToSection[task]
@@ -1458,7 +1480,7 @@ func (m model) View() string {
 			viewportView, _, _, _ := m.buildViewport(lines, m.cursor, contentHeight)
 			footerLine := m.renderHelpBar(fmt.Sprintf("%d matches", len(tasks)))
 			if m.searching {
-				footerLine = searchLine
+				footerLine = m.renderFooterSplit(searchLine, modeLabel)
 			}
 			footerView := buildFooterView([]string{footerLine}, footerHeight)
 			return lipgloss.JoinVertical(lipgloss.Left, headerView, viewportView, footerView)
@@ -1517,7 +1539,7 @@ func (m model) View() string {
 
 					cursor := " "
 					if m.cursor == taskIndex {
-						cursor = cursorStyle.Render(">")
+						cursor = cursorStyle.Render(cursorCharacter)
 					}
 
 					fileInfo := ""
@@ -1560,7 +1582,7 @@ func (m model) View() string {
 		}
 		footerLine := m.renderHelpBar(scrollInfo)
 		if m.searching {
-			footerLine = searchLine
+			footerLine = m.renderFooterSplit(searchLine, modeLabel)
 		}
 		footerView := buildFooterView([]string{footerLine}, footerHeight)
 		return lipgloss.JoinVertical(lipgloss.Left, headerView, viewportView, footerView)
