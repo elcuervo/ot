@@ -20,7 +20,7 @@ const (
 	maxInputWidth        = 70
 	minInputWidth        = 30
 	prioritySaveDebounce = 500 * time.Millisecond
-	cursorCharacter      = "→"
+	cursorCharacter      = ">"
 )
 
 type prioritySaveMsg struct {
