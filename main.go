@@ -190,7 +190,7 @@ func main() {
 		}
 
 		if profile != nil {
-			resolved, err := resolveProfilePaths(name, *profile)
+			resolved, err := resolveProfilePaths(name, *profile, cfg.baseDir)
 
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
@@ -442,7 +442,7 @@ func loadAllProfileTabs(cfg Config) ([]ProfileTab, error) {
 	var tabs []ProfileTab
 	for _, name := range names {
 		profile := cfg.Profiles[name]
-		resolved, err := resolveProfilePaths(name, profile)
+		resolved, err := resolveProfilePaths(name, profile, cfg.baseDir)
 		if err != nil {
 			fmt.Printf("Warning: skipping profile %q: %v\n", name, err)
 			continue

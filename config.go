@@ -15,6 +15,7 @@ type Config struct {
 	Profiles       map[string]Profile `toml:"profiles"`
 	Tabs           bool               `toml:"tabs"`
 	Theme          string             `toml:"theme"`
+	baseDir        string             // Directory containing the config file (not serialized)
 }
 
 type Profile struct {
@@ -128,12 +129,12 @@ func selectProfile(profileFlag string, cfg Config) (string, *Profile, error) {
 	return "", nil, nil
 }
 
-func resolveProfilePaths(name string, p Profile) (*ResolvedProfile, error) {
+func resolveProfilePaths(name string, p Profile, baseDir string) (*ResolvedProfile, error) {
 	if err := validateProfile(name, p); err != nil {
 		return nil, err
 	}
 
-	vaultPath, err := resolveVaultPath(p.Vault)
+	vaultPath, err := resolveVaultPath(p.Vault, baseDir)
 
 	if err != nil {
 		return nil, &ProfileError{Profile: name, Field: "vault", Err: err}
@@ -222,6 +223,9 @@ func loadConfigFrom(customPath string) (Config, string, error) {
 		return Config{}, path, err
 	}
 
+	// Store the config file's directory for resolving relative paths
+	cfg.baseDir = filepath.Dir(path)
+
 	return cfg, path, nil
 }
 
@@ -258,7 +262,7 @@ func expandPath(value string) (string, error) {
 	return expanded, nil
 }
 
-func resolveVaultPath(value string) (string, error) {
+func resolveVaultPath(value string, baseDir string) (string, error) {
 	expanded, err := expandPath(value)
 
 	if err != nil {
@@ -269,6 +273,12 @@ func resolveVaultPath(value string) (string, error) {
 		return expanded, nil
 	}
 
+	// If we have a base directory (from config file location), use it
+	if baseDir != "" {
+		return filepath.Join(baseDir, expanded), nil
+	}
+
+	// Fall back to home directory for backward compatibility
 	homeDir, err := os.UserHomeDir()
 
 	if err != nil {
