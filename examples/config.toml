@@ -11,18 +11,19 @@ theme = "dracula"
 # Default profile when no arguments given
 default_profile = "work"
 
+# Paths are relative to this config file's location
 [profiles.work]
-vault = "./examples/vault"
+vault = "./vault"
 query = "not done"
 
 [profiles.alpha]
-vault = "./examples/project-alpha"
+vault = "./project-alpha"
 query = "not done"
 
 [profiles.beta]
-vault = "./examples/project-beta"
+vault = "./project-beta"
 query = "not done"
 
 [profiles.gamma]
-vault = "./examples/project-gamma"
+vault = "./project-gamma"
 query = "not done"
