@@ -27,6 +27,8 @@ func main() {
 	queryInputShort := flag.String("q", "", "Query file path or inline query string (short)")
 	listOnly := flag.Bool("list", false, "List tasks without TUI (non-interactive)")
 	profileName := flag.String("profile", "", "Profile name from config (optional)")
+	configFile := flag.String("config", "", "Path to config file (optional)")
+	configFileShort := flag.String("c", "", "Path to config file (short)")
 	showVersion := flag.Bool("version", false, "Show version and exit")
 	initTasks := flag.Bool("init", false, "Create a tasks.md file with an empty task")
 
@@ -53,7 +55,14 @@ func main() {
 	}
 
 	args := flag.Args()
-	cfg, cfgPath, err := loadConfig()
+
+	// Get config path from -c or --config flags
+	cfgFile := *configFile
+	if cfgFile == "" {
+		cfgFile = *configFileShort
+	}
+
+	cfg, cfgPath, err := loadConfigFrom(cfgFile)
 
 	if err != nil {
 		fmt.Printf("Error loading config: %v\n", err)
@@ -212,6 +221,7 @@ func main() {
 		fmt.Println("\nOptions:")
 		fmt.Println("  -q, --query <query>   Query file path or inline query string")
 		fmt.Println("  --profile <name>      Use profile from config")
+		fmt.Println("  -c, --config <path>   Path to config file")
 		fmt.Println("  --list                List tasks without TUI")
 		fmt.Println("  --init                Create tasks.md with an empty task")
 		fmt.Println("  --version             Show version")

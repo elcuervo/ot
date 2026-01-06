@@ -183,16 +183,33 @@ func configPath() (string, error) {
 }
 
 func loadConfig() (Config, string, error) {
-	path, err := configPath()
+	return loadConfigFrom("")
+}
 
-	if err != nil {
-		return Config{}, "", err
+func loadConfigFrom(customPath string) (Config, string, error) {
+	var path string
+	var err error
+
+	if customPath != "" {
+		path, err = expandPath(customPath)
+		if err != nil {
+			return Config{}, "", err
+		}
+	} else {
+		path, err = configPath()
+		if err != nil {
+			return Config{}, "", err
+		}
 	}
 
 	data, err := os.ReadFile(path)
 
 	if err != nil {
 		if os.IsNotExist(err) {
+			if customPath != "" {
+				// Custom path was specified but doesn't exist - this is an error
+				return Config{}, path, fmt.Errorf("config file not found: %s", path)
+			}
 			return Config{}, path, nil
 		}
 
