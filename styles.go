@@ -2,20 +2,32 @@ package main
 
 import "github.com/charmbracelet/lipgloss"
 
-// Unified color palette
+// Theme color palette - all colors defined in one place
 var (
-	primaryColor        = lipgloss.Color("109")
-	accentColor         = lipgloss.Color("171")
-	barBackground       = lipgloss.Color("233")
-	tabBackground       = lipgloss.Color("233")
-	tabActiveBackground = lipgloss.Color("235")
-	barColor            = lipgloss.NewStyle().Background(barBackground)
-	mutedColor          = lipgloss.Color("239")
-	subtleColor         = lipgloss.Color("244")
-	warningColor        = lipgloss.Color("179")
-	dangerColor         = lipgloss.Color("167")
-	successColor        = lipgloss.Color("65")
-	highlightColor      = lipgloss.Color("171")
+	// Core brand colors
+	primaryColor   = lipgloss.Color("109") // Teal/cyan - main accent
+	accentColor    = lipgloss.Color("171") // Magenta/purple - secondary accent
+	highlightColor = lipgloss.Color("171") // Selection/cursor highlight
+
+	// Semantic colors
+	successColor = lipgloss.Color("65")  // Green - confirmations
+	warningColor = lipgloss.Color("179") // Yellow/gold - warnings, matches
+	dangerColor  = lipgloss.Color("167") // Red - errors, deletions
+
+	// Text colors
+	textColor   = lipgloss.Color("white") // Primary text
+	mutedColor  = lipgloss.Color("239")   // De-emphasized text
+	subtleColor = lipgloss.Color("244")   // Secondary text
+	dimColor    = lipgloss.Color("241")   // Very dim text
+
+	// Background colors
+	barBackground       = lipgloss.Color("233") // Header/footer bars
+	tabBackground       = lipgloss.Color("233") // Inactive tabs
+	tabActiveBackground = lipgloss.Color("235") // Active tab
+	neutralBackground   = lipgloss.Color("240") // Neutral buttons
+
+	// Utility
+	barColor = lipgloss.NewStyle().Background(barBackground)
 )
 
 var (
@@ -31,19 +43,19 @@ var (
 
 	searchModeStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("231")).
+			Foreground(textColor).
 			Background(dangerColor).
 			Padding(0, 1)
 
 	resultsModeStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("231")).
+				Foreground(textColor).
 				Background(warningColor).
 				Padding(0, 1)
 
 	aboutStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("white"))
+			Foreground(textColor)
 
 	aboutBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -59,7 +71,7 @@ var (
 			Strikethrough(true)
 
 	fileStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("243"))
+			Foreground(subtleColor)
 
 	helpStyle = lipgloss.NewStyle().
 			Foreground(mutedColor).
@@ -143,41 +155,41 @@ var (
 	// Help dialog styles (about screen)
 	helpDialogKeyStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("212"))
+				Foreground(accentColor)
 
 	helpDialogDescStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("245"))
+				Foreground(subtleColor)
 
 	helpDialogHeaderStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("99"))
+				Foreground(primaryColor)
 
 	dimTextStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241"))
+			Foreground(dimColor)
 
 	// Button styles (delete dialog)
 	buttonDangerStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("231")).
-				Background(lipgloss.Color("196")).
+				Foreground(textColor).
+				Background(dangerColor).
 				Padding(0, 2)
 
 	buttonNeutralStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("231")).
-				Background(lipgloss.Color("240")).
+				Foreground(textColor).
+				Background(neutralBackground).
 				Padding(0, 2)
 
 	dangerBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("196")).
+			BorderForeground(dangerColor).
 			Padding(1, 2)
 
 	// Loader styles
 	loaderTitleStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(lipgloss.Color("205"))
+				Foreground(accentColor)
 
 	loaderCountStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("212"))
+				Foreground(accentColor)
 )
