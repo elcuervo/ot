@@ -2,7 +2,7 @@
 
 _organized tasks_
 
-![VHS](https://vhs.charm.sh/vhs-6Y3Vjj4SjhB7YMOUlbT5Yt.gif)
+![VHS](https://vhs.charm.sh/vhs-5LcSkVmSo0Y0UCt1Td8GM.gif)
 
 ## Install
 
