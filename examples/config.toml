@@ -1,0 +1,28 @@
+# Example ot configuration with tabbed mode
+# Copy this to ~/.config/ot/config.toml
+
+# Enable tabbed mode to view all profiles as tabs
+tabs = true
+
+# Glamour theme for markdown rendering
+# Options: dracula, dark, light, notty, tokyo-night, etc.
+theme = "dracula"
+
+# Default profile when no arguments given
+default_profile = "work"
+
+[profiles.work]
+vault = "./examples/vault"
+query = "not done"
+
+[profiles.alpha]
+vault = "./examples/project-alpha"
+query = "not done"
+
+[profiles.beta]
+vault = "./examples/project-beta"
+query = "not done"
+
+[profiles.gamma]
+vault = "./examples/project-gamma"
+query = "not done"
