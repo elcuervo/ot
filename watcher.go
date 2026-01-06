@@ -33,6 +33,17 @@ func NewWatcher(vaultPath string) (*Watcher, error) {
 		return nil, err
 	}
 
+	info, err := os.Stat(vaultPath)
+	if err == nil && !info.IsDir() {
+		// Watch the file itself and its parent directory to catch updates and renames.
+		_ = w.Add(vaultPath)
+		parent := filepath.Dir(vaultPath)
+		if parent != "" && parent != "." {
+			_ = w.Add(parent)
+		}
+		return &Watcher{watcher: w, vaultPath: vaultPath}, nil
+	}
+
 	// Walk vault and add all directories (skip hidden ones)
 	filepath.Walk(vaultPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil || !info.IsDir() {
