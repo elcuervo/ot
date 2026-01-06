@@ -2,194 +2,201 @@ package main
 
 import "github.com/charmbracelet/lipgloss"
 
-// Theme color palette - all colors defined in one place
-var (
-	// Core brand colors
-	primaryColor   = lipgloss.Color("109") // Teal/cyan - main accent
-	accentColor    = lipgloss.Color("171") // Magenta/purple - secondary accent
-	highlightColor = lipgloss.Color("171") // Selection/cursor highlight
+// Theme defines the color scheme for the application
+type Theme struct {
+	Primary   lipgloss.Color // Main brand color
+	Accent    lipgloss.Color // Secondary accent
+	Highlight lipgloss.Color // Selection/cursor
+	Success   lipgloss.Color // Confirmations
+	Warning   lipgloss.Color // Warnings, matches
+	Danger    lipgloss.Color // Errors, deletions
+	Text      lipgloss.Color // Primary text
+	Muted     lipgloss.Color // De-emphasized
+	Subtle    lipgloss.Color // Secondary text
+	Dim       lipgloss.Color // Very dim text
+	Surface   lipgloss.Color // Bars, backgrounds
+	Overlay   lipgloss.Color // Elevated surfaces
+}
 
-	// Semantic colors
-	successColor = lipgloss.Color("65")  // Green - confirmations
-	warningColor = lipgloss.Color("179") // Yellow/gold - warnings, matches
-	dangerColor  = lipgloss.Color("167") // Red - errors, deletions
-
-	// Text colors
-	textColor   = lipgloss.Color("white") // Primary text
-	mutedColor  = lipgloss.Color("239")   // De-emphasized text
-	subtleColor = lipgloss.Color("244")   // Secondary text
-	dimColor    = lipgloss.Color("241")   // Very dim text
-
-	// Background colors
-	barBackground       = lipgloss.Color("233") // Header/footer bars
-	tabBackground       = lipgloss.Color("233") // Inactive tabs
-	tabActiveBackground = lipgloss.Color("235") // Active tab
-	neutralBackground   = lipgloss.Color("240") // Neutral buttons
-
-	// Utility
-	barColor = lipgloss.NewStyle().Background(barBackground)
-)
+// theme is the active color scheme
+var theme = Theme{
+	Primary:   lipgloss.Color("#569cd6"), // VS Code blue
+	Accent:    lipgloss.Color("#4ec9b0"), // Teal/cyan
+	Highlight: lipgloss.Color("#dcdcaa"), // Yellow (functions)
+	Success:   lipgloss.Color("#6a9955"), // Green (comments)
+	Warning:   lipgloss.Color("#ce9178"), // Orange (strings)
+	Danger:    lipgloss.Color("#f14c4c"), // Red (errors)
+	Text:      lipgloss.Color("#d4d4d4"), // Light gray text
+	Muted:     lipgloss.Color("#6a6a6a"), // Gray
+	Subtle:    lipgloss.Color("#808080"), // Medium gray
+	Dim:       lipgloss.Color("#4d4d4d"), // Dark gray
+	Surface:   lipgloss.Color("#1e1e1e"), // Editor background
+	Overlay:   lipgloss.Color("#252526"), // Sidebar background
+}
 
 var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(accentColor).
-			Background(barBackground)
+			Foreground(theme.Accent).
+			Background(theme.Surface)
 
 	titleNameStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(primaryColor).
-			Background(barBackground)
+			Foreground(theme.Primary).
+			Background(theme.Surface)
 
 	searchModeStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(textColor).
-			Background(dangerColor).
+			Foreground(theme.Text).
+			Background(theme.Danger).
 			Padding(0, 1)
 
 	resultsModeStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(textColor).
-				Background(warningColor).
+				Foreground(theme.Text).
+				Background(theme.Warning).
 				Padding(0, 1)
 
 	aboutStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(textColor)
+			Foreground(theme.Text)
 
 	aboutBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(mutedColor).
+			BorderForeground(theme.Muted).
 			Padding(1, 2)
 
 	selectedStyle = lipgloss.NewStyle().
-			Foreground(highlightColor).
+			Foreground(theme.Highlight).
 			Bold(true)
 
 	doneStyle = lipgloss.NewStyle().
-			Foreground(mutedColor).
+			Foreground(theme.Muted).
 			Strikethrough(true)
 
 	fileStyle = lipgloss.NewStyle().
-			Foreground(subtleColor)
+			Foreground(theme.Subtle)
 
 	helpStyle = lipgloss.NewStyle().
-			Foreground(mutedColor).
+			Foreground(theme.Muted).
 			MarginTop(1)
 
 	cursorStyle = lipgloss.NewStyle().
-			Foreground(highlightColor)
+			Foreground(theme.Highlight)
 
 	groupStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(primaryColor)
+			Foreground(theme.Primary)
 
 	sectionStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(accentColor)
+			Foreground(theme.Accent)
 
 	countStyle = lipgloss.NewStyle().
-			Foreground(subtleColor)
+			Foreground(theme.Subtle)
 
 	searchStyle = lipgloss.NewStyle().
-			Foreground(highlightColor).
+			Foreground(theme.Highlight).
 			Bold(true).
-			Background(barBackground)
+			Background(theme.Surface)
 
 	matchStyle = lipgloss.NewStyle().
-			Foreground(warningColor).
+			Foreground(theme.Warning).
 			Bold(true)
 
 	searchInputStyle = lipgloss.NewStyle().
-				Foreground(accentColor).
-				Background(barBackground)
+				Foreground(theme.Accent).
+				Background(theme.Surface)
 
 	confirmStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(successColor)
+			Foreground(theme.Success)
 
 	cancelStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(dangerColor)
+			Foreground(theme.Danger)
 
 	dangerStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(dangerColor)
+			Foreground(theme.Danger)
 
-	// Tab bar styles - minimal single-line tabs
+	// Tab bar styles
 	activeTabStyle = lipgloss.NewStyle().
-			Foreground(primaryColor).
-			Background(tabActiveBackground).
+			Foreground(theme.Primary).
+			Background(theme.Overlay).
 			Bold(true)
 
 	inactiveTabStyle = lipgloss.NewStyle().
-				Foreground(subtleColor).
-				Background(tabBackground)
+				Foreground(theme.Subtle).
+				Background(theme.Surface)
 
 	tabSeparatorStyle = lipgloss.NewStyle().
-				Foreground(mutedColor).
-				Background(tabBackground)
+				Foreground(theme.Muted).
+				Background(theme.Surface)
 
-	// Help bar styles - persistent bottom bar
+	// Help bar styles
 	helpBarStyle = lipgloss.NewStyle().
-			Foreground(subtleColor).
-			Background(barBackground)
+			Foreground(theme.Subtle).
+			Background(theme.Surface)
 
 	headerBarStyle = lipgloss.NewStyle().
-			Foreground(primaryColor).
-			Background(barBackground)
+			Foreground(theme.Primary).
+			Background(theme.Surface)
 
 	helpBarKeyStyle = lipgloss.NewStyle().
-			Foreground(primaryColor).
+			Foreground(theme.Primary).
 			Bold(true)
 
 	helpBarDescStyle = lipgloss.NewStyle().
-				Foreground(subtleColor)
+				Foreground(theme.Subtle)
 
 	helpBarSeparatorStyle = lipgloss.NewStyle().
-				Foreground(mutedColor)
+				Foreground(theme.Muted)
 
 	helpBarInfoStyle = lipgloss.NewStyle().
-				Foreground(mutedColor)
+				Foreground(theme.Muted)
 
-	// Help dialog styles (about screen)
+	// Help dialog styles
 	helpDialogKeyStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(accentColor)
+				Foreground(theme.Accent)
 
 	helpDialogDescStyle = lipgloss.NewStyle().
-				Foreground(subtleColor)
+				Foreground(theme.Subtle)
 
 	helpDialogHeaderStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(primaryColor)
+				Foreground(theme.Primary)
 
 	dimTextStyle = lipgloss.NewStyle().
-			Foreground(dimColor)
+			Foreground(theme.Dim)
 
-	// Button styles (delete dialog)
+	// Button styles
 	buttonDangerStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(textColor).
-				Background(dangerColor).
+				Foreground(theme.Text).
+				Background(theme.Danger).
 				Padding(0, 2)
 
 	buttonNeutralStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(textColor).
-				Background(neutralBackground).
+				Foreground(theme.Text).
+				Background(theme.Overlay).
 				Padding(0, 2)
 
 	dangerBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(dangerColor).
+			BorderForeground(theme.Danger).
 			Padding(1, 2)
 
 	// Loader styles
 	loaderTitleStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(accentColor)
+				Foreground(theme.Accent)
 
 	loaderCountStyle = lipgloss.NewStyle().
-				Foreground(accentColor)
+				Foreground(theme.Accent)
+
+	// Utility
+	barColor = lipgloss.NewStyle().Background(theme.Surface)
 )
