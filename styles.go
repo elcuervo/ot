@@ -4,18 +4,18 @@ import "github.com/charmbracelet/lipgloss"
 
 // Unified color palette
 var (
-	primaryColor   = lipgloss.Color("75")
-	accentColor    = lipgloss.Color("205")
-	barBackground  = lipgloss.Color("233")
-	tabBackground  = lipgloss.Color("233")
+	primaryColor        = lipgloss.Color("109")
+	accentColor         = lipgloss.Color("171")
+	barBackground       = lipgloss.Color("233")
+	tabBackground       = lipgloss.Color("233")
 	tabActiveBackground = lipgloss.Color("235")
-	barColor       = lipgloss.NewStyle().Background(barBackground)
-	mutedColor     = lipgloss.Color("242")
-	subtleColor    = lipgloss.Color("245")
-	warningColor   = lipgloss.Color("214")
-	dangerColor    = lipgloss.Color("196")
-	successColor   = lipgloss.Color("41")
-	highlightColor = lipgloss.Color("213")
+	barColor            = lipgloss.NewStyle().Background(barBackground)
+	mutedColor          = lipgloss.Color("239")
+	subtleColor         = lipgloss.Color("244")
+	warningColor        = lipgloss.Color("179")
+	dangerColor         = lipgloss.Color("167")
+	successColor        = lipgloss.Color("65")
+	highlightColor      = lipgloss.Color("171")
 )
 
 var (
