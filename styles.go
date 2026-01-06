@@ -6,6 +6,8 @@ import "github.com/charmbracelet/lipgloss"
 var (
 	primaryColor   = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
 	accentColor    = lipgloss.AdaptiveColor{Light: "#FF79C6", Dark: "#FF79C6"}
+	barBackground  = lipgloss.AdaptiveColor{Light: "#F2F2F2", Dark: "#2A2A2A"}
+	barColor       = lipgloss.NewStyle().Background(barBackground)
 	mutedColor     = lipgloss.Color("241")
 	subtleColor    = lipgloss.Color("245")
 	warningColor   = lipgloss.Color("214")
@@ -17,11 +19,13 @@ var (
 var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(accentColor)
+			Foreground(accentColor).
+			Background(barBackground)
 
 	titleNameStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(primaryColor)
+			Foreground(primaryColor).
+			Background(barBackground)
 
 	searchModeStyle = lipgloss.NewStyle().
 			Bold(true).
@@ -75,14 +79,16 @@ var (
 
 	searchStyle = lipgloss.NewStyle().
 			Foreground(highlightColor).
-			Bold(true)
+			Bold(true).
+			Background(barBackground)
 
 	matchStyle = lipgloss.NewStyle().
 			Foreground(warningColor).
 			Bold(true)
 
 	searchInputStyle = lipgloss.NewStyle().
-				Foreground(accentColor)
+				Foreground(accentColor).
+				Background(barBackground)
 
 	confirmStyle = lipgloss.NewStyle().
 			Bold(true).
@@ -99,17 +105,25 @@ var (
 	// Tab bar styles - minimal single-line tabs
 	activeTabStyle = lipgloss.NewStyle().
 			Foreground(primaryColor).
+			Background(barBackground).
 			Bold(true)
 
 	inactiveTabStyle = lipgloss.NewStyle().
-				Foreground(subtleColor)
+				Foreground(subtleColor).
+				Background(barBackground)
 
 	tabSeparatorStyle = lipgloss.NewStyle().
-				Foreground(mutedColor)
+				Foreground(mutedColor).
+				Background(barBackground)
 
 	// Help bar styles - persistent bottom bar
 	helpBarStyle = lipgloss.NewStyle().
-			Foreground(subtleColor)
+			Foreground(subtleColor).
+			Background(barBackground)
+
+	headerBarStyle = lipgloss.NewStyle().
+			Foreground(primaryColor).
+			Background(barBackground)
 
 	helpBarKeyStyle = lipgloss.NewStyle().
 			Foreground(primaryColor).
