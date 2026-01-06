@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"time"
@@ -13,17 +14,17 @@ import (
 )
 
 const (
-	defaultWindowHeight = 24
-	defaultWindowWidth  = 80
-	minVisibleHeight    = 3
-	maxInputWidth       = 70
-	minInputWidth       = 30
+	defaultWindowHeight  = 24
+	defaultWindowWidth   = 80
+	minVisibleHeight     = 3
+	maxInputWidth        = 70
+	minInputWidth        = 30
 	prioritySaveDebounce = 500 * time.Millisecond
 )
 
 type prioritySaveMsg struct {
-	key string
-	at  time.Time
+	key  string
+	at   time.Time
 	task *Task
 }
 
@@ -108,23 +109,23 @@ func newModel(sections []QuerySection, vaultPath string, titleName string, query
 	}
 
 	return model{
-		sections:          sections,
-		tasks:             tasks,
-		vaultPath:         vaultPath,
-		titleName:         titleName,
-		queryFile:         queryFile,
-		queries:           queries,
-		windowHeight:      defaultWindowHeight,
-		windowWidth:       defaultWindowWidth,
-		viewport:         viewport.New(defaultWindowWidth, defaultWindowHeight),
-		taskToSection:     taskToSection,
-		taskToGroup:       taskToGroup,
-		editorMode:        editorMode,
-		cache:             cache,
-		watcher:           watcher,
-		debouncer:         debouncer,
-		selfModifiedFiles: make(map[string]time.Time),
-		recentlyToggled:   make(map[string]time.Time),
+		sections:            sections,
+		tasks:               tasks,
+		vaultPath:           vaultPath,
+		titleName:           titleName,
+		queryFile:           queryFile,
+		queries:             queries,
+		windowHeight:        defaultWindowHeight,
+		windowWidth:         defaultWindowWidth,
+		viewport:            viewport.New(defaultWindowWidth, defaultWindowHeight),
+		taskToSection:       taskToSection,
+		taskToGroup:         taskToGroup,
+		editorMode:          editorMode,
+		cache:               cache,
+		watcher:             watcher,
+		debouncer:           debouncer,
+		selfModifiedFiles:   make(map[string]time.Time),
+		recentlyToggled:     make(map[string]time.Time),
 		prioritySavePending: make(map[string]time.Time),
 	}
 }
@@ -172,7 +173,7 @@ func newModelWithTabs(tabs []ProfileTab) model {
 		queries:             firstTab.Queries,
 		windowHeight:        defaultWindowHeight,
 		windowWidth:         defaultWindowWidth,
-		viewport:           viewport.New(defaultWindowWidth, defaultWindowHeight),
+		viewport:            viewport.New(defaultWindowWidth, defaultWindowHeight),
 		taskToSection:       taskToSection,
 		taskToGroup:         taskToGroup,
 		editorMode:          firstTab.Profile.EditorMode,
@@ -329,7 +330,7 @@ func (m model) buildViewport(lines []viewLine, cursorLineIdx int, contentHeight 
 	if len(lines) == 0 {
 		vp.SetContent("")
 		view := lipgloss.NewStyle().Width(width).Height(contentHeight).Render(vp.View())
-		return view, 0, 0, 0
+		return normalizeViewHeight(view, contentHeight), 0, 0, 0
 	}
 
 	contentLines := make([]string, len(lines))
@@ -350,17 +351,51 @@ func (m model) buildViewport(lines []viewLine, cursorLineIdx int, contentHeight 
 		cursorLineIdx = len(lines) - 1
 	}
 
-	startLine, endLine := calculateVisibleRange(cursorLineIdx, lineHeights, contentHeight)
+	startLine := 0
+	endLine := len(lines)
 	startRow := 0
-	for i := 0; i < startLine; i++ {
-		startRow += lineHeights[i]
+
+	if totalRenderedLines > contentHeight {
+		startLine, endLine = calculateVisibleRange(cursorLineIdx, lineHeights, contentHeight)
+		for i := 0; i < startLine; i++ {
+			startRow += lineHeights[i]
+		}
 	}
 
 	vp.SetContent(strings.Join(contentLines, "\n"))
 	vp.YOffset = startRow
 
 	view := lipgloss.NewStyle().Width(width).Height(contentHeight).Render(vp.View())
-	return view, startLine, endLine, totalRenderedLines
+	return normalizeViewHeight(view, contentHeight), startLine, endLine, totalRenderedLines
+}
+
+func normalizeViewHeight(view string, height int) string {
+	if height <= 0 {
+		return ""
+	}
+
+	lines := strings.Split(view, "\n")
+	if len(lines) > height {
+		lines = lines[:height]
+	}
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+	return strings.Join(lines, "\n")
+}
+
+func buildFooterView(lines []string, height int) string {
+	if height <= 0 {
+		return ""
+	}
+	if len(lines) > height {
+		lines = lines[len(lines)-height:]
+	}
+	if height > len(lines) {
+		padding := make([]string, height-len(lines))
+		lines = append(padding, lines...)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m *model) filterBySearch() {
@@ -1142,17 +1177,74 @@ func (m model) View() string {
 		}
 
 		// Header
-		centered := lipgloss.NewStyle().Width(totalWidth).Align(lipgloss.Center)
 		versionLine := fmt.Sprintf("ot v%s (%s)", strings.TrimSpace(version), sha)
+		centered := lipgloss.NewStyle().Width(totalWidth).Align(lipgloss.Center)
 		header := aboutStyle.Render(centered.Render(versionLine)) + "\n"
 		header += dimStyle.Render(centered.Render("by elcuervo")) + "\n\n"
 
 		// Footer
 		footer := "\n" + dimStyle.Render(centered.Render("esc to close"))
 
-		box := aboutBoxStyle.Render(header + columns + footer)
+		useColumns := m.windowWidth >= totalWidth+4 && m.windowHeight >= 12
+		if useColumns {
+			box := aboutBoxStyle.Render(header + columns + footer)
+			return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
+		}
 
-		return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
+		compactKey := func(key, desc string) string {
+			return keyStyle.Render(key) + " " + descStyle.Render(desc)
+		}
+
+		lines := []string{
+			aboutStyle.Render(versionLine),
+			dimStyle.Render("by elcuervo"),
+			"",
+			headerStyle.Render("Navigation"),
+			compactKey("↑ k", "up"),
+			compactKey("↓ j", "down"),
+			compactKey("g", "first"),
+			compactKey("G", "last"),
+			"",
+			headerStyle.Render("Priority"),
+			compactKey("+", "increase"),
+			compactKey("-", "decrease"),
+			compactKey("!", "highest"),
+			compactKey("0", "reset"),
+			"",
+			headerStyle.Render("Actions"),
+			compactKey("space", "toggle"),
+			compactKey("u", "undo"),
+			compactKey("a n", "add"),
+			compactKey("e", "edit"),
+			compactKey("d", "delete"),
+			compactKey("r", "refresh"),
+			"",
+			headerStyle.Render("Search"),
+			compactKey("/", "search"),
+			compactKey("esc", "exit"),
+			"",
+			headerStyle.Render("General"),
+			compactKey("?", "help"),
+			compactKey("q", "quit"),
+		}
+
+		if m.tabsEnabled && len(m.tabs) > 1 {
+			lines = append(lines,
+				"",
+				headerStyle.Render("Tabs"),
+				compactKey("tab", "next"),
+				compactKey("S-tab", "prev"),
+			)
+		}
+
+		lines = append(lines, "", dimStyle.Render("esc to close"))
+
+		vp := m.viewport
+		vp.Width = max(1, m.windowWidth)
+		vp.Height = max(1, m.windowHeight)
+		vp.YOffset = 0
+		vp.SetContent(strings.Join(lines, "\n"))
+		return vp.View()
 	}
 
 	if m.editing && m.editingTask != nil {
@@ -1259,26 +1351,54 @@ func (m model) View() string {
 		titleLine += " " + modeLabel
 	}
 
-	var header strings.Builder
-	header.WriteString(titleLine + "\n")
+	headerLines := []string{titleLine}
+
+	windowHeight := m.windowHeight
+	if windowHeight <= 0 {
+		windowHeight = defaultWindowHeight
+	}
+
+	headerHeight := 1
+	footerMinHeight := 2
+	if windowHeight < headerHeight+footerMinHeight+1 {
+		footerMinHeight = max(1, windowHeight-headerHeight-1)
+	}
+
+	targetContent := int(math.Round(float64(windowHeight) * 0.80))
+	available := windowHeight - headerHeight - footerMinHeight
+	if available < 1 {
+		available = 1
+	}
+	contentHeight := max(targetContent, available)
+	if contentHeight > windowHeight-headerHeight-footerMinHeight {
+		contentHeight = windowHeight - headerHeight - footerMinHeight
+	}
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
+	footerHeight := windowHeight - headerHeight - contentHeight
+	if footerHeight < footerMinHeight {
+		footerHeight = footerMinHeight
+		contentHeight = windowHeight - headerHeight - footerHeight
+		if contentHeight < 1 {
+			contentHeight = 1
+		}
+	}
+
+	headerView := strings.Join(headerLines, "\n")
+
+	searchLine := helpBarKeyStyle.Render("/") + helpBarDescStyle.Render(" search")
+
 	if m.searching {
 		searchLabel := searchStyle.Render("/")
 		searchInput := searchInputStyle.Render(m.searchQuery)
 		if m.searchNavigating {
-			header.WriteString(searchLabel + searchInput + "\n")
+			searchLine = searchLabel + searchInput
 		} else {
 			cursorChar := searchStyle.Render("_")
-			header.WriteString(searchLabel + searchInput + cursorChar + "\n")
+			searchLine = searchLabel + searchInput + cursorChar
 		}
-	} else {
-		header.WriteString("\n")
-	}
-
-	headerStr := header.String()
-	headerLines := strings.Count(headerStr, "\n")
-	contentHeight := m.windowHeight - headerLines - 1
-	if contentHeight < minVisibleHeight {
-		contentHeight = minVisibleHeight
 	}
 
 	if len(m.tasks) == 0 {
@@ -1286,7 +1406,8 @@ func (m model) View() string {
 			{content: "No tasks found.", taskIndex: -1},
 		}
 		viewportView, _, _, _ := m.buildViewport(lines, 0, contentHeight)
-		return headerStr + viewportView + "\n" + m.renderHelpBar("")
+		footerView := buildFooterView([]string{searchLine, m.renderHelpBar("")}, footerHeight)
+		return lipgloss.JoinVertical(lipgloss.Left, headerView, viewportView, footerView)
 	}
 
 	if m.searching && m.searchQuery != "" {
@@ -1297,7 +1418,8 @@ func (m model) View() string {
 				{content: fileStyle.Render("  No matching tasks"), taskIndex: -1},
 			}
 			viewportView, _, _, _ := m.buildViewport(lines, 0, contentHeight)
-			return headerStr + viewportView + "\n" + m.renderHelpBar("0 matches")
+			footerView := buildFooterView([]string{searchLine, m.renderHelpBar("0 matches")}, footerHeight)
+			return lipgloss.JoinVertical(lipgloss.Left, headerView, viewportView, footerView)
 		}
 
 		{
@@ -1343,7 +1465,8 @@ func (m model) View() string {
 			}
 
 			viewportView, _, _, _ := m.buildViewport(lines, m.cursor, contentHeight)
-			return headerStr + viewportView + "\n" + m.renderHelpBar(fmt.Sprintf("%d matches", len(tasks)))
+			footerView := buildFooterView([]string{searchLine, m.renderHelpBar(fmt.Sprintf("%d matches", len(tasks)))}, footerHeight)
+			return lipgloss.JoinVertical(lipgloss.Left, headerView, viewportView, footerView)
 		}
 	}
 
@@ -1440,7 +1563,8 @@ func (m model) View() string {
 		if totalRenderedLines > contentHeight {
 			scrollInfo = fmt.Sprintf("%d-%d of %d", startLine+1, endLine, len(lines))
 		}
-		return headerStr + viewportView + "\n" + m.renderHelpBar(scrollInfo)
+		footerView := buildFooterView([]string{searchLine, m.renderHelpBar(scrollInfo)}, footerHeight)
+		return lipgloss.JoinVertical(lipgloss.Left, headerView, viewportView, footerView)
 	}
 }
 
