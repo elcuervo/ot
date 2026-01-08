@@ -6,28 +6,11 @@ _organized tasks_
 
 ## Install
 
-With Go:
-
-```sh
-go install .
-```
-
-Or with `just`:
-
-```sh
-just install
-```
-
-With Nix:
-
-```sh
-nix profile install .#default
-```
-
-Or install directly from GitHub:
-
-```sh
-nix profile install github:elcuervo/ot
+```bash
+go install .                          # Go
+just install                          # Just
+nix profile install .#default         # Nix (local)
+nix profile install github:elcuervo/ot # Nix (remote)
 ```
 
 ## Usage
@@ -39,86 +22,72 @@ ot ~/vault -q queries/tasks.md   # Query file
 ot 'projects/*/todo.md'          # Glob pattern
 ot                               # Use default profile
 ot --profile work                # Use named profile
+ot --tabs                        # Multi-profile tabbed mode
+ot --list                        # Plain text output (no TUI)
+ot --init                        # Create tasks.md in current dir
 ```
 
 ## Keybindings
 
 | Key | Action |
 |-----|--------|
-| `j` / `k` or arrows | Navigate up/down |
-| `g` / `G` | Jump to top/bottom |
-| `space` / `enter` / `x` | Toggle task |
+| `j`/`k` or arrows | Navigate up/down |
+| `g`/`G` | Jump to top/bottom |
+| `space`/`enter`/`x` | Toggle task |
 | `u` | Undo last toggle |
-| `a` / `n` | Add task after current |
+| `a`/`n` | Add task after current |
 | `e` | Edit task |
 | `d` | Delete task |
 | `/` | Search tasks |
 | `r` | Refresh |
-| `+` / `-` | Increase/decrease priority |
+| `+`/`-` | Increase/decrease priority |
 | `!` | Set highest priority |
 | `0` | Reset to normal priority |
+| `Tab`/`Shift+Tab` | Switch tabs (tabbed mode) |
 | `?` | Help |
 | `q` | Quit |
 
 ## Features
 
-### Inline Editor
-
-Press `e` to edit a task's description in a popup.
-
-- `Enter` to save
-- `Esc` to cancel
-
-### External Editor
-
-Set the `editor` option in your config to `"external"` (or leave it unset with `$EDITOR` defined)
-
-```toml
-[profiles.work]
-vault = "Obsidian"
-query = "queries/tasks.md"
-editor = "external"  # or "inline" (default if $EDITOR is not set)
-```
-
-### Search
-
-Press `/` to search. Matches against:
-- Task description
-- Section name (e.g., "Due Today", "Upcoming")
-- Group name (folder or filename when grouped)
+- **Inline/External Editor**: Press `e` to edit. Use `editor = "external"` in config for `$EDITOR`
+- **Search**: `/` to search across task description, section, and group names
+- **File Watching**: Auto-refresh on file changes with debouncing
+- **Tabbed Mode**: Multiple profiles as tabs with `--tabs` or `tabs = true` in config
+- **Theming**: Configurable via `theme` option (uses Glamour themes)
 
 ### Priority
 
-Priorities are stored as emojis in the task description:
+Stored as emojis: `🔺` Highest, `⏫` High, `🔼` Medium, (none) Normal, `🔽` Low, `⏬` Lowest
 
-- `🔺` Highest
-- `⏫` High
-- `🔼` Medium
-- (none) Normal
-- `🔽` Low
-- `⏬` Lowest
+Use `+`/`-` to cycle, `!` for highest, `0` to reset.
 
-Use `+` / `-` to cycle priority, `!` to set highest, and `0` to reset.
-Queries can sort by priority with `sort by priority`.
+### Task Metadata
+
+- **Due date**: `📅 YYYY-MM-DD`
+- **Completion**: Auto-appends `✅ YYYY-MM-DD` when toggled done
 
 ## Config
 
-Create `~/.config/ot/config.toml` (or `$XDG_CONFIG_HOME/ot/config.toml`) with profiles and a default:
+Create `~/.config/ot/config.toml`:
 
 ```toml
 default_profile = "work"
+tabs = true                    # Enable tabbed interface
+theme = "dracula"              # Glamour theme
 
 [profiles.work]
 vault = "Obsidian"
 query = "queries/tasks.md"
-editor = "inline"  # "inline" or "external"
+editor = "inline"              # "inline" or "external"
+
+[profiles.personal]
+vault = "~/notes"
+query = "not done"
 ```
 
-If `default_profile` is set, run `ot` without arguments to use it.
+## Query Syntax
 
-## Query File
-
-The query file uses [Obsidian Tasks](https://publish.obsidian.md/tasks/Introduction) syntax:
+Uses [Obsidian Tasks](https://publish.obsidian.md/tasks/Introduction) syntax in markdown code blocks:
 
 <pre>
 ## Due Today
@@ -134,12 +103,16 @@ due today
 not done
 due after today
 group by folder
+sort by priority
 ```
 </pre>
 
-Supported filters:
-- `not done` - incomplete tasks only
-- `due today`, `due tomorrow`, `due yesterday`
-- `due before <date>`, `due after <date>`
-- `group by folder`, `group by filename`
-- `sort by priority`
+### Supported Filters
+
+| Filter | Description |
+|--------|-------------|
+| `not done` | Incomplete tasks only |
+| `due today/tomorrow/yesterday` | Relative date filters |
+| `due before/after/on <date>` | Date comparisons (YYYY-MM-DD) |
+| `group by folder/filename` | Group tasks |
+| `sort by priority/due` | Sort tasks |

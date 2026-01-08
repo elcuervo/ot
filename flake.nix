@@ -21,6 +21,7 @@
             go-tools
             just
             vhs
+            glow
           ];
 
           shellHook = ''
