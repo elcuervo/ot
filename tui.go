@@ -673,6 +673,13 @@ func (m *model) refreshWithCache() {
 	}
 
 	m.clampCursor(len(m.tasks))
+
+	// Sync current tab state so tab bar counters are updated
+	if m.tabsEnabled && m.activeTab >= 0 && m.activeTab < len(m.tabs) {
+		m.tabs[m.activeTab].Sections = m.sections
+		m.tabs[m.activeTab].Tasks = m.tasks
+		m.tabs[m.activeTab].Cursor = m.cursor
+	}
 }
 
 func (m *model) useInlineEditor() bool {
