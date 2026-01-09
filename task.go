@@ -14,11 +14,11 @@ import (
 )
 
 var (
-	checkboxRe  = regexp.MustCompile(`^(\s*-\s*)\[([ xX])\](.*)$`)
-	doneRe      = regexp.MustCompile(`\s*✅\s*\d{4}-\d{2}-\d{2}`)
-	taskRe      = regexp.MustCompile(`^\s*-\s*\[([ xX])\]\s*(.*)$`)
-	dueDateRe   = regexp.MustCompile(`📅\s*(\d{4}-\d{2}-\d{2})`)
-	priorityRe  = regexp.MustCompile(`[🔺⏫🔼🔽⏬]`)
+	checkboxRe = regexp.MustCompile(`^(\s*-\s*)\[([ xX])\](.*)$`)
+	doneRe     = regexp.MustCompile(`\s*✅\s*\d{4}-\d{2}-\d{2}`)
+	taskRe     = regexp.MustCompile(`^\s*-\s*\[([ xX])\]\s*(.*)$`)
+	dueDateRe  = regexp.MustCompile(`📅\s*(\d{4}-\d{2}-\d{2})`)
+	priorityRe = regexp.MustCompile(`[🔺⏫🔼🔽⏬]`)
 )
 
 // Priority levels (lower value = higher priority)
