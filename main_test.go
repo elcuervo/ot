@@ -1144,3 +1144,295 @@ func TestParseInlineQuery(t *testing.T) {
 		})
 	}
 }
+
+func TestUndoStackPushPop(t *testing.T) {
+	m := &model{
+		undoStack: make([]UndoEntry, 0),
+	}
+
+	// Test empty pop returns nil
+	entry := m.popUndo()
+	if entry != nil {
+		t.Error("Expected nil from empty stack")
+	}
+
+	// Test push and pop
+	m.pushUndo(UndoEntry{
+		Type:       OpToggle,
+		FilePath:   "/test.md",
+		LineNumber: 1,
+		WasDone:    false,
+	})
+
+	if len(m.undoStack) != 1 {
+		t.Errorf("Expected stack length 1, got %d", len(m.undoStack))
+	}
+
+	entry = m.popUndo()
+	if entry == nil {
+		t.Fatal("Expected non-nil entry")
+	}
+	if entry.Type != OpToggle {
+		t.Errorf("Expected OpToggle, got %v", entry.Type)
+	}
+	if entry.FilePath != "/test.md" {
+		t.Errorf("Expected /test.md, got %s", entry.FilePath)
+	}
+	if len(m.undoStack) != 0 {
+		t.Errorf("Expected empty stack after pop, got %d", len(m.undoStack))
+	}
+}
+
+func TestUndoStackMaxSize(t *testing.T) {
+	m := &model{
+		undoStack: make([]UndoEntry, 0),
+	}
+
+	// Push more than maxUndoStackSize entries
+	for i := 0; i < maxUndoStackSize+10; i++ {
+		m.pushUndo(UndoEntry{
+			Type:       OpToggle,
+			FilePath:   "/test.md",
+			LineNumber: i,
+		})
+	}
+
+	if len(m.undoStack) != maxUndoStackSize {
+		t.Errorf("Expected stack to be capped at %d, got %d", maxUndoStackSize, len(m.undoStack))
+	}
+
+	// Verify oldest entries were removed (first entry should have LineNumber 10)
+	if m.undoStack[0].LineNumber != 10 {
+		t.Errorf("Expected first entry LineNumber to be 10, got %d", m.undoStack[0].LineNumber)
+	}
+}
+
+func TestUndoStackOrder(t *testing.T) {
+	m := &model{
+		undoStack: make([]UndoEntry, 0),
+	}
+
+	// Push multiple entries
+	m.pushUndo(UndoEntry{Type: OpToggle, LineNumber: 1})
+	m.pushUndo(UndoEntry{Type: OpDelete, LineNumber: 2})
+	m.pushUndo(UndoEntry{Type: OpPriorityChange, LineNumber: 3})
+
+	// Pop should return in LIFO order
+	entry := m.popUndo()
+	if entry.Type != OpPriorityChange || entry.LineNumber != 3 {
+		t.Errorf("Expected OpPriorityChange at line 3, got %v at line %d", entry.Type, entry.LineNumber)
+	}
+
+	entry = m.popUndo()
+	if entry.Type != OpDelete || entry.LineNumber != 2 {
+		t.Errorf("Expected OpDelete at line 2, got %v at line %d", entry.Type, entry.LineNumber)
+	}
+
+	entry = m.popUndo()
+	if entry.Type != OpToggle || entry.LineNumber != 1 {
+		t.Errorf("Expected OpToggle at line 1, got %v at line %d", entry.Type, entry.LineNumber)
+	}
+}
+
+func TestRestoreTaskLine(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "test.md")
+
+	// Create initial file
+	content := `# Test File
+
+- [ ] Task one
+- [ ] Task two
+- [ ] Task three
+`
+	err := os.WriteFile(testFile, []byte(content), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Restore a line at position 4 (0-indexed line 3, which is "- [ ] Task two")
+	restoredLine := "- [ ] Restored task"
+	err = restoreTaskLine(testFile, 4, restoredLine)
+	if err != nil {
+		t.Fatalf("restoreTaskLine failed: %v", err)
+	}
+
+	// Read and verify
+	saved, err := os.ReadFile(testFile)
+	if err != nil {
+		t.Fatalf("Failed to read file: %v", err)
+	}
+
+	lines := strings.Split(string(saved), "\n")
+	if len(lines) != 7 { // Original 6 lines + 1 restored
+		t.Errorf("Expected 7 lines, got %d", len(lines))
+	}
+
+	if lines[3] != restoredLine {
+		t.Errorf("Expected line 4 to be %q, got %q", restoredLine, lines[3])
+	}
+}
+
+func TestRestoreTaskLineAtStart(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "test.md")
+
+	content := "- [ ] Existing task\n"
+	err := os.WriteFile(testFile, []byte(content), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Restore at line 1 (beginning)
+	err = restoreTaskLine(testFile, 1, "- [ ] First task")
+	if err != nil {
+		t.Fatalf("restoreTaskLine failed: %v", err)
+	}
+
+	saved, err := os.ReadFile(testFile)
+	if err != nil {
+		t.Fatalf("Failed to read file: %v", err)
+	}
+
+	lines := strings.Split(string(saved), "\n")
+	if lines[0] != "- [ ] First task" {
+		t.Errorf("Expected first line to be restored task, got %q", lines[0])
+	}
+	if lines[1] != "- [ ] Existing task" {
+		t.Errorf("Expected second line to be existing task, got %q", lines[1])
+	}
+}
+
+func TestRestoreTaskLineAtEnd(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "test.md")
+
+	content := "- [ ] First task\n- [ ] Second task"
+	err := os.WriteFile(testFile, []byte(content), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Restore at line 100 (beyond end, should append)
+	err = restoreTaskLine(testFile, 100, "- [ ] Last task")
+	if err != nil {
+		t.Fatalf("restoreTaskLine failed: %v", err)
+	}
+
+	saved, err := os.ReadFile(testFile)
+	if err != nil {
+		t.Fatalf("Failed to read file: %v", err)
+	}
+
+	lines := strings.Split(string(saved), "\n")
+	if lines[len(lines)-1] != "- [ ] Last task" {
+		t.Errorf("Expected last line to be restored task, got %q", lines[len(lines)-1])
+	}
+}
+
+func TestDeleteAndRestoreTask(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "test.md")
+
+	content := `# Test File
+
+- [ ] Task one
+- [ ] Task two
+- [ ] Task three
+`
+	err := os.WriteFile(testFile, []byte(content), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Parse tasks
+	tasks, err := parseFile(testFile)
+	if err != nil {
+		t.Fatalf("parseFile failed: %v", err)
+	}
+
+	// Find "Task two" and save its info for restoration
+	var taskTwo *Task
+	for _, task := range tasks {
+		if task.Description == "Task two" {
+			taskTwo = task
+			break
+		}
+	}
+	if taskTwo == nil {
+		t.Fatal("Could not find Task two")
+	}
+
+	savedLine := taskTwo.RawLine
+	savedLineNumber := taskTwo.LineNumber
+
+	// Delete the task
+	err = deleteTask(taskTwo)
+	if err != nil {
+		t.Fatalf("deleteTask failed: %v", err)
+	}
+
+	// Verify it's deleted
+	tasksAfterDelete, _ := parseFile(testFile)
+	for _, task := range tasksAfterDelete {
+		if task.Description == "Task two" {
+			t.Error("Task two should have been deleted")
+		}
+	}
+
+	// Restore the task
+	err = restoreTaskLine(testFile, savedLineNumber, savedLine)
+	if err != nil {
+		t.Fatalf("restoreTaskLine failed: %v", err)
+	}
+
+	// Verify it's restored
+	tasksAfterRestore, _ := parseFile(testFile)
+	found := false
+	for _, task := range tasksAfterRestore {
+		if task.Description == "Task two" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Task two should have been restored")
+	}
+}
+
+func TestIsRecentlyToggled(t *testing.T) {
+	m := &model{
+		undoStack: make([]UndoEntry, 0),
+	}
+
+	task := &Task{
+		FilePath:   "/test.md",
+		LineNumber: 5,
+	}
+
+	// Initially not in undo stack
+	if m.isRecentlyToggled(task) {
+		t.Error("Task should not be in undo stack initially")
+	}
+
+	// Add to undo stack
+	m.pushUndo(UndoEntry{
+		Type:       OpToggle,
+		FilePath:   task.FilePath,
+		LineNumber: task.LineNumber,
+	})
+
+	// Now should be found
+	if !m.isRecentlyToggled(task) {
+		t.Error("Task should be found in undo stack")
+	}
+
+	// Different task should not be found
+	otherTask := &Task{
+		FilePath:   "/other.md",
+		LineNumber: 10,
+	}
+	if m.isRecentlyToggled(otherTask) {
+		t.Error("Other task should not be in undo stack")
+	}
+}

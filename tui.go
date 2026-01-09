@@ -29,6 +29,28 @@ type prioritySaveMsg struct {
 	task *Task
 }
 
+// OperationType represents the type of operation that can be undone
+type OperationType int
+
+const (
+	OpToggle OperationType = iota
+	OpDelete
+	OpPriorityChange
+)
+
+// UndoEntry represents a single undoable operation
+type UndoEntry struct {
+	Type             OperationType
+	Timestamp        time.Time
+	FilePath         string
+	LineNumber       int
+	DeletedLine      string // For deletion undo
+	PreviousPriority int    // For priority undo
+	WasDone          bool   // For toggle undo
+}
+
+const maxUndoStackSize = 50
+
 // ProfileTab holds per-profile state for tabbed mode
 type ProfileTab struct {
 	Profile   *ResolvedProfile
@@ -87,9 +109,8 @@ type model struct {
 	debouncer         *Debouncer
 	selfModifiedFiles map[string]time.Time
 
-	// Recently toggled tasks (kept visible for undo)
-	// Key is "filepath:lineNumber" to survive re-parsing
-	recentlyToggled map[string]time.Time
+	// Undo stack for all operations
+	undoStack []UndoEntry
 
 	// Debounced priority saves (keyed by taskKey)
 	prioritySavePending map[string]time.Time
@@ -126,7 +147,7 @@ func newModel(sections []QuerySection, vaultPath string, titleName string, query
 		watcher:             watcher,
 		debouncer:           debouncer,
 		selfModifiedFiles:   make(map[string]time.Time),
-		recentlyToggled:     make(map[string]time.Time),
+		undoStack:           make([]UndoEntry, 0),
 		prioritySavePending: make(map[string]time.Time),
 	}
 }
@@ -138,7 +159,7 @@ func newModelWithTabs(tabs []ProfileTab) model {
 			windowWidth:         defaultWindowWidth,
 			viewport:            viewport.New(defaultWindowWidth, defaultWindowHeight),
 			selfModifiedFiles:   make(map[string]time.Time),
-			recentlyToggled:     make(map[string]time.Time),
+			undoStack:           make([]UndoEntry, 0),
 			prioritySavePending: make(map[string]time.Time),
 		}
 	}
@@ -182,7 +203,7 @@ func newModelWithTabs(tabs []ProfileTab) model {
 		watcher:             firstTab.Watcher,
 		debouncer:           firstTab.Debouncer,
 		selfModifiedFiles:   make(map[string]time.Time),
-		recentlyToggled:     make(map[string]time.Time),
+		undoStack:           make([]UndoEntry, 0),
 		prioritySavePending: make(map[string]time.Time),
 	}
 }
@@ -459,44 +480,90 @@ func taskKey(task *Task) string {
 	return fmt.Sprintf("%s:%d", task.FilePath, task.LineNumber)
 }
 
-// isRecentlyToggled checks if a task was toggled within the session
-func (m *model) isRecentlyToggled(task *Task) bool {
-	_, ok := m.recentlyToggled[taskKey(task)]
-	return ok
+// pushUndo adds an entry to the undo stack
+func (m *model) pushUndo(entry UndoEntry) {
+	entry.Timestamp = time.Now()
+	m.undoStack = append(m.undoStack, entry)
+	if len(m.undoStack) > maxUndoStackSize {
+		m.undoStack = m.undoStack[len(m.undoStack)-maxUndoStackSize:]
+	}
 }
 
-// undoLastToggle finds the most recently toggled task and toggles it back
-func (m *model) undoLastToggle() {
-	if len(m.recentlyToggled) == 0 {
+// popUndo removes and returns the most recent undo entry
+func (m *model) popUndo() *UndoEntry {
+	if len(m.undoStack) == 0 {
+		return nil
+	}
+	entry := m.undoStack[len(m.undoStack)-1]
+	m.undoStack = m.undoStack[:len(m.undoStack)-1]
+	return &entry
+}
+
+// isRecentlyToggled checks if a task has a recent undo entry (for keeping it visible)
+func (m *model) isRecentlyToggled(task *Task) bool {
+	for _, entry := range m.undoStack {
+		if entry.FilePath == task.FilePath && entry.LineNumber == task.LineNumber {
+			return true
+		}
+	}
+	return false
+}
+
+// undoLastOperation undoes the most recent operation
+func (m *model) undoLastOperation() {
+	entry := m.popUndo()
+	if entry == nil {
 		return
 	}
 
-	// Find the most recent toggle
-	var latestKey string
-	var latestTime time.Time
-	for key, t := range m.recentlyToggled {
-		if latestKey == "" || t.After(latestTime) {
-			latestKey = key
-			latestTime = t
-		}
+	switch entry.Type {
+	case OpToggle:
+		m.undoToggle(entry)
+	case OpDelete:
+		m.undoDelete(entry)
+	case OpPriorityChange:
+		m.undoPriorityChange(entry)
 	}
+}
 
-	// Find the task in current tasks list
+// undoToggle restores a task's previous toggle state
+func (m *model) undoToggle(entry *UndoEntry) {
 	for _, task := range m.tasks {
-		if taskKey(task) == latestKey {
+		if task.FilePath == entry.FilePath && task.LineNumber == entry.LineNumber {
 			task.Toggle()
 			if err := saveTask(task); err != nil {
 				m.err = err
 			} else {
 				m.selfModifiedFiles[task.FilePath] = time.Now()
-				delete(m.recentlyToggled, latestKey)
 			}
 			return
 		}
 	}
+}
 
-	// Task not in current view, remove from recently toggled anyway
-	delete(m.recentlyToggled, latestKey)
+// undoDelete restores a deleted task line
+func (m *model) undoDelete(entry *UndoEntry) {
+	if err := restoreTaskLine(entry.FilePath, entry.LineNumber, entry.DeletedLine); err != nil {
+		m.err = err
+	} else {
+		m.selfModifiedFiles[entry.FilePath] = time.Now()
+	}
+	m.refresh()
+}
+
+// undoPriorityChange restores a task's previous priority
+func (m *model) undoPriorityChange(entry *UndoEntry) {
+	for _, task := range m.tasks {
+		if task.FilePath == entry.FilePath && task.LineNumber == entry.LineNumber {
+			task.SetPriority(entry.PreviousPriority)
+			if err := saveTask(task); err != nil {
+				m.err = err
+			} else {
+				m.selfModifiedFiles[task.FilePath] = time.Now()
+			}
+			return
+		}
+	}
 }
 
 // filterTasksWithRecent applies query filters but keeps recently toggled tasks visible
@@ -625,13 +692,19 @@ func (m *model) clampCursor(length int) {
 }
 
 func (m *model) toggleAndSave(task *Task) {
+	m.pushUndo(UndoEntry{
+		Type:       OpToggle,
+		FilePath:   task.FilePath,
+		LineNumber: task.LineNumber,
+		WasDone:    task.Done,
+	})
 	task.Toggle()
 	if err := saveTask(task); err != nil {
 		m.err = err
+		m.popUndo() // Rollback on error
 		return
 	}
 	m.selfModifiedFiles[task.FilePath] = time.Now()
-	m.recentlyToggled[taskKey(task)] = time.Now()
 }
 
 func (m *model) schedulePrioritySave(task *Task) tea.Cmd {
@@ -644,16 +717,36 @@ func (m *model) schedulePrioritySave(task *Task) tea.Cmd {
 }
 
 func (m *model) setPriorityDebounced(task *Task, priority int) tea.Cmd {
+	if task.Priority != priority {
+		m.pushUndo(UndoEntry{
+			Type:             OpPriorityChange,
+			FilePath:         task.FilePath,
+			LineNumber:       task.LineNumber,
+			PreviousPriority: task.Priority,
+		})
+	}
 	task.SetPriority(priority)
 	return m.schedulePrioritySave(task)
 }
 
 func (m *model) cyclePriorityUpDebounced(task *Task) tea.Cmd {
+	m.pushUndo(UndoEntry{
+		Type:             OpPriorityChange,
+		FilePath:         task.FilePath,
+		LineNumber:       task.LineNumber,
+		PreviousPriority: task.Priority,
+	})
 	task.CyclePriorityUp()
 	return m.schedulePrioritySave(task)
 }
 
 func (m *model) cyclePriorityDownDebounced(task *Task) tea.Cmd {
+	m.pushUndo(UndoEntry{
+		Type:             OpPriorityChange,
+		FilePath:         task.FilePath,
+		LineNumber:       task.LineNumber,
+		PreviousPriority: task.Priority,
+	})
 	task.CyclePriorityDown()
 	return m.schedulePrioritySave(task)
 }
@@ -789,11 +882,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.deleting {
 			switch msg.String() {
-			case "y", "Y", "enter":
+			case "y", "Y", "enter", "d", "D":
 				if m.deletingTask != nil {
+					m.pushUndo(UndoEntry{
+						Type:        OpDelete,
+						FilePath:    m.deletingTask.FilePath,
+						LineNumber:  m.deletingTask.LineNumber,
+						DeletedLine: m.deletingTask.RawLine,
+					})
 					filePath := m.deletingTask.FilePath
 					if err := deleteTask(m.deletingTask); err != nil {
 						m.err = err
+						m.popUndo() // Rollback on error
 					} else {
 						m.selfModifiedFiles[filePath] = time.Now()
 					}
@@ -916,7 +1016,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 
 				case "u":
-					m.undoLastToggle()
+					m.undoLastOperation()
 					return m, nil
 				}
 				return m, nil
@@ -1006,12 +1106,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "r":
-			// Clear recently toggled tasks so done tasks are hidden
-			m.recentlyToggled = make(map[string]time.Time)
+			// Clear undo stack so done tasks are hidden
+			m.undoStack = make([]UndoEntry, 0)
 			m.refresh()
 
 		case "u":
-			m.undoLastToggle()
+			m.undoLastOperation()
 
 		case "e":
 			if len(m.tasks) > 0 {

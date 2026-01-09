@@ -271,6 +271,37 @@ func deleteTask(task *Task) error {
 	return os.Rename(tempPath, task.FilePath)
 }
 
+// restoreTaskLine inserts a line back into the file at the specified line number
+func restoreTaskLine(filePath string, lineNumber int, line string) error {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+
+	lines := strings.Split(string(content), "\n")
+
+	insertAt := lineNumber - 1
+	if insertAt < 0 {
+		insertAt = 0
+	}
+	if insertAt > len(lines) {
+		insertAt = len(lines)
+	}
+
+	newLines := make([]string, 0, len(lines)+1)
+	newLines = append(newLines, lines[:insertAt]...)
+	newLines = append(newLines, line)
+	newLines = append(newLines, lines[insertAt:]...)
+
+	tempPath := filePath + ".tmp"
+	err = os.WriteFile(tempPath, []byte(strings.Join(newLines, "\n")), 0644)
+	if err != nil {
+		return err
+	}
+
+	return os.Rename(tempPath, filePath)
+}
+
 // addTask inserts a new task line after the reference task in its source file
 func addTask(refTask *Task, description string) (*Task, error) {
 	content, err := os.ReadFile(refTask.FilePath)

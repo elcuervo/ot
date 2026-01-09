@@ -475,7 +475,6 @@ func loadAllProfileTabs(cfg Config) ([]ProfileTab, error) {
 
 		// Build sections
 		var sections []QuerySection
-		var tasks []*Task
 		for _, query := range queries {
 			filtered := filterTasks(allTasks, query)
 			groups := groupTasks(filtered, query.GroupBy, query.SortBy, resolved.VaultPath)
@@ -485,7 +484,14 @@ func loadAllProfileTabs(cfg Config) ([]ProfileTab, error) {
 				Groups: groups,
 				Tasks:  filtered,
 			})
-			tasks = append(tasks, filtered...)
+		}
+
+		// Build tasks list from groups to match View iteration order
+		var tasks []*Task
+		for _, s := range sections {
+			for _, g := range s.Groups {
+				tasks = append(tasks, g.Tasks...)
+			}
 		}
 
 		// Create watcher
