@@ -502,7 +502,9 @@ func (m *model) popUndo() *UndoEntry {
 // isRecentlyToggled checks if a task has a recent undo entry (for keeping it visible)
 func (m *model) isRecentlyToggled(task *Task) bool {
 	for _, entry := range m.undoStack {
-		if entry.FilePath == task.FilePath && entry.LineNumber == task.LineNumber {
+		// Only consider toggle operations - delete entries have stale line numbers
+		// after the file is modified, and priority changes don't affect visibility
+		if entry.Type == OpToggle && entry.FilePath == task.FilePath && entry.LineNumber == task.LineNumber {
 			return true
 		}
 	}

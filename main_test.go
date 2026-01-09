@@ -1436,3 +1436,43 @@ func TestIsRecentlyToggled(t *testing.T) {
 		t.Error("Other task should not be in undo stack")
 	}
 }
+
+func TestIsRecentlyToggledIgnoresDeleteEntries(t *testing.T) {
+	m := &model{
+		undoStack: make([]UndoEntry, 0),
+	}
+
+	// Simulate deleting a task at line 5
+	m.pushUndo(UndoEntry{
+		Type:        OpDelete,
+		FilePath:    "/test.md",
+		LineNumber:  5,
+		DeletedLine: "- [ ] Deleted task",
+	})
+
+	// A task that now occupies line 5 (shifted up after delete) should NOT
+	// be considered "recently toggled" just because a delete happened at that line
+	taskAtSameLine := &Task{
+		FilePath:   "/test.md",
+		LineNumber: 5,
+	}
+	if m.isRecentlyToggled(taskAtSameLine) {
+		t.Error("Delete entries should not cause isRecentlyToggled to return true")
+	}
+
+	// Priority change entries should also not affect visibility
+	m.pushUndo(UndoEntry{
+		Type:             OpPriorityChange,
+		FilePath:         "/test.md",
+		LineNumber:       10,
+		PreviousPriority: 2,
+	})
+
+	taskWithPriorityChange := &Task{
+		FilePath:   "/test.md",
+		LineNumber: 10,
+	}
+	if m.isRecentlyToggled(taskWithPriorityChange) {
+		t.Error("Priority change entries should not cause isRecentlyToggled to return true")
+	}
+}
