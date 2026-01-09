@@ -1198,157 +1198,491 @@ func (m model) View() string {
 		return "Goodbye!\n"
 	}
 
-	if m.aboutOpen {
-		sha := strings.TrimSpace(buildSHA)
-		if sha == "" {
-			sha = "unknown"
-		}
-
-		// Column layout
-		keyWidth := 8
-		descWidth := 12
-		colWidth := keyWidth + descWidth + 1
-		totalWidth := colWidth*2 + 4
-
-		renderKey := func(key, desc string) string {
-			k := helpDialogKeyStyle.Width(keyWidth).Render(key)
-			d := helpDialogDescStyle.Width(descWidth).Render(desc)
-			return k + " " + d
-		}
-
-		// Left column: Navigation + Search + Priority
-		leftCol := helpDialogHeaderStyle.Render("Navigation") + "\n"
-		leftCol += renderKey("↑ k", "up") + "\n"
-		leftCol += renderKey("↓ j", "down") + "\n"
-		leftCol += renderKey("g", "first") + "\n"
-		leftCol += renderKey("G", "last") + "\n"
-		leftCol += "\n"
-		leftCol += helpDialogHeaderStyle.Render("Priority") + "\n"
-		leftCol += renderKey("+", "increase") + "\n"
-		leftCol += renderKey("-", "decrease") + "\n"
-		leftCol += renderKey("!", "highest") + "\n"
-		leftCol += renderKey("0", "reset") + "\n"
-
-		// Right column: Actions + Search + General
-		rightCol := helpDialogHeaderStyle.Render("Actions") + "\n"
-		rightCol += renderKey("space", "toggle") + "\n"
-		rightCol += renderKey("u", "undo") + "\n"
-		rightCol += renderKey("a n", "add") + "\n"
-		rightCol += renderKey("e", "edit") + "\n"
-		rightCol += renderKey("d", "delete") + "\n"
-		rightCol += renderKey("r", "refresh") + "\n"
-		rightCol += "\n"
-		rightCol += helpDialogHeaderStyle.Render("Search") + "\n"
-		rightCol += renderKey("/", "search") + "\n"
-		rightCol += renderKey("esc", "exit") + "\n"
-		rightCol += "\n"
-		rightCol += helpDialogHeaderStyle.Render("General") + "\n"
-		rightCol += renderKey("?", "help") + "\n"
-		rightCol += renderKey("q", "quit") + "\n"
-		if m.tabsEnabled && len(m.tabs) > 1 {
-			rightCol += "\n"
-			rightCol += helpDialogHeaderStyle.Render("Tabs") + "\n"
-			rightCol += renderKey("tab", "next") + "\n"
-			rightCol += renderKey("S-tab", "prev") + "\n"
-		}
-
-		// Join columns side by side
-		leftLines := strings.Split(leftCol, "\n")
-		rightLines := strings.Split(rightCol, "\n")
-
-		maxLines := len(leftLines)
-		if len(rightLines) > maxLines {
-			maxLines = len(rightLines)
-		}
-
-		columns := ""
-		for i := 0; i < maxLines; i++ {
-			left := ""
-			right := ""
-			if i < len(leftLines) {
-				left = leftLines[i]
+		if m.aboutOpen {
+			sha := strings.TrimSpace(buildSHA)
+			if sha == "" {
+				sha = "unknown"
 			}
-			if i < len(rightLines) {
-				right = rightLines[i]
+
+			versionLine := fmt.Sprintf("ot v%s (%s)", strings.TrimSpace(version), sha)
+
+			type helpItem struct {
+				keys string
+				desc string
 			}
-			// Pad left column
-			leftVisible := lipgloss.Width(left)
-			if leftVisible < colWidth {
-				left += strings.Repeat(" ", colWidth-leftVisible)
+			type helpSection struct {
+				title string
+				items []helpItem
 			}
-			columns += left + "    " + right + "\n"
+
+			sectionsFull := []helpSection{
+				{title: "Navigation", items: []helpItem{
+					{keys: "↑/k", desc: "move up"},
+					{keys: "↓/j", desc: "move down"},
+					{keys: "g", desc: "top"},
+					{keys: "G", desc: "bottom"},
+				}},
+				{title: "Tasks", items: []helpItem{
+					{keys: "enter/space/x", desc: "toggle done"},
+					{keys: "a/n", desc: "add after"},
+					{keys: "e", desc: "edit"},
+					{keys: "d", desc: "delete"},
+					{keys: "u", desc: "undo"},
+					{keys: "r", desc: "refresh"},
+				}},
+				{title: "Priority", items: []helpItem{
+					{keys: "+", desc: "increase"},
+					{keys: "-", desc: "decrease"},
+					{keys: "!", desc: "highest"},
+					{keys: "0", desc: "normal"},
+				}},
+				{title: "Search", items: []helpItem{
+					{keys: "/", desc: "start search"},
+					{keys: "type", desc: "filter"},
+					{keys: "enter", desc: "lock results"},
+					{keys: "↑/↓", desc: "move"},
+					{keys: "backspace", desc: "edit query"},
+					{keys: "esc", desc: "exit"},
+				}},
+				{title: "General", items: []helpItem{
+					{keys: "?", desc: "help"},
+					{keys: "q/ctrl+c", desc: "quit"},
+				}},
+			}
+
+			sectionsCompact := []helpSection{
+				{title: "Navigation", items: []helpItem{
+					{keys: "↑/k", desc: "up"},
+					{keys: "↓/j", desc: "down"},
+					{keys: "g", desc: "top"},
+					{keys: "G", desc: "bottom"},
+				}},
+				{title: "Tasks", items: []helpItem{
+					{keys: "enter/space/x", desc: "toggle"},
+					{keys: "a/n", desc: "add"},
+					{keys: "e", desc: "edit"},
+					{keys: "d", desc: "delete"},
+					{keys: "u", desc: "undo"},
+				}},
+				{title: "Priority", items: []helpItem{
+					{keys: "+", desc: "up"},
+					{keys: "-", desc: "down"},
+					{keys: "!", desc: "top"},
+					{keys: "0", desc: "normal"},
+				}},
+				{title: "Search", items: []helpItem{
+					{keys: "/", desc: "search"},
+					{keys: "esc", desc: "exit"},
+				}},
+				{title: "General", items: []helpItem{
+					{keys: "?", desc: "help"},
+					{keys: "q/ctrl+c", desc: "quit"},
+				}},
+			}
+
+			sectionsTiny := []helpSection{
+				{title: "Navigation", items: []helpItem{
+					{keys: "↑/k", desc: "up"},
+					{keys: "↓/j", desc: "down"},
+				}},
+				{title: "Tasks", items: []helpItem{
+					{keys: "enter/space", desc: "toggle"},
+					{keys: "a", desc: "add"},
+					{keys: "e", desc: "edit"},
+				}},
+				{title: "Search", items: []helpItem{
+					{keys: "/", desc: "search"},
+				}},
+				{title: "General", items: []helpItem{
+					{keys: "?", desc: "help"},
+					{keys: "q", desc: "quit"},
+				}},
+			}
+
+			if m.tabsEnabled && len(m.tabs) > 1 {
+				sectionsFull = append(sectionsFull, helpSection{
+					title: "Tabs",
+					items: []helpItem{
+						{keys: "tab", desc: "next"},
+						{keys: "shift+tab", desc: "prev"},
+					},
+				})
+				sectionsCompact = append(sectionsCompact, helpSection{
+					title: "Tabs",
+					items: []helpItem{
+						{keys: "tab", desc: "next"},
+						{keys: "shift+tab", desc: "prev"},
+					},
+				})
+			}
+
+			type helpRenderMode struct {
+				sections       []helpSection
+				showByline     bool
+				showFooter     bool
+				headerGapLines int
+				maxCols        int
+				sectionSpacing int
+				itemsPerLine   int
+			}
+
+			renderHelpBody := func(width int, bodyHeight int, mode helpRenderMode) (string, bool) {
+				if width <= 0 {
+					width = 1
+				}
+				const gap = 4
+				const minColWidth = 32
+				maxCols := min(3, mode.maxCols)
+
+				possibleCols := 1
+				for c := maxCols; c >= 2; c-- {
+					if width >= c*minColWidth+gap*(c-1) {
+						possibleCols = c
+						break
+					}
+				}
+
+				maxKeyWidth := 0
+				for _, sec := range mode.sections {
+					for _, item := range sec.items {
+						maxKeyWidth = max(maxKeyWidth, lipgloss.Width(item.keys))
+					}
+				}
+
+				type layoutConfig struct {
+					cols           int
+					colWidths      []int
+					itemsPerLine   int
+					sectionSpacing int
+				}
+				type layoutResult struct {
+					cfg         layoutConfig
+					assignments [][]helpSection
+					height      int
+				}
+
+				layout := func(cols int, itemsPerLine int, sectionSpacing int) layoutResult {
+					colWidths := make([]int, cols)
+					usable := width - gap*(cols-1)
+					base := max(1, usable/cols)
+					extra := max(0, usable%cols)
+					for i := 0; i < cols; i++ {
+						colWidths[i] = base
+						if i < extra {
+							colWidths[i]++
+						}
+					}
+
+					assignments := make([][]helpSection, cols)
+					colHeights := make([]int, cols)
+
+					estimateSecHeight := func(sec helpSection) int {
+						itemLines := (len(sec.items) + itemsPerLine - 1) / itemsPerLine
+						return 1 + itemLines
+					}
+
+					for _, sec := range mode.sections {
+						best := 0
+						for i := 1; i < cols; i++ {
+							if colHeights[i] < colHeights[best] {
+								best = i
+							}
+						}
+						assignments[best] = append(assignments[best], sec)
+						colHeights[best] += estimateSecHeight(sec)
+						if sectionSpacing > 0 {
+							colHeights[best] += sectionSpacing
+						}
+					}
+
+					height := 0
+					for i := 0; i < cols; i++ {
+						h := 0
+						for sidx, sec := range assignments[i] {
+							itemLines := (len(sec.items) + itemsPerLine - 1) / itemsPerLine
+							h += 1 + itemLines
+							if sectionSpacing > 0 && sidx != len(assignments[i])-1 {
+								h += sectionSpacing
+							}
+						}
+						height = max(height, h)
+					}
+
+					return layoutResult{
+						cfg: layoutConfig{
+							cols:           cols,
+							colWidths:      colWidths,
+							itemsPerLine:   itemsPerLine,
+							sectionSpacing: sectionSpacing,
+						},
+						assignments: assignments,
+						height:      height,
+					}
+				}
+
+				candidateCols := []int{possibleCols}
+				if possibleCols == 3 {
+					candidateCols = []int{3, 2, 1}
+				} else if possibleCols == 2 {
+					candidateCols = []int{2, 1}
+				}
+
+				candidateItemsPerLine := []int{mode.itemsPerLine}
+				if mode.itemsPerLine == 1 {
+					candidateItemsPerLine = []int{1, 2}
+				}
+
+				candidateSectionSpacing := []int{mode.sectionSpacing}
+				if mode.sectionSpacing > 0 {
+					candidateSectionSpacing = []int{mode.sectionSpacing, 0}
+				}
+
+				var bestFit *layoutResult
+				var bestAny *layoutResult
+
+				betterReadable := func(a, b layoutResult) bool {
+					// Prefer more spacing, fewer items per line, more columns.
+					if a.cfg.sectionSpacing != b.cfg.sectionSpacing {
+						return a.cfg.sectionSpacing > b.cfg.sectionSpacing
+					}
+					if a.cfg.itemsPerLine != b.cfg.itemsPerLine {
+						return a.cfg.itemsPerLine < b.cfg.itemsPerLine
+					}
+					return a.cfg.cols > b.cfg.cols
+				}
+
+				for _, cols := range candidateCols {
+					for _, itemsPerLine := range candidateItemsPerLine {
+						if itemsPerLine == 2 && width < 60 {
+							continue
+						}
+						for _, sectionSpacing := range candidateSectionSpacing {
+							res := layout(cols, itemsPerLine, sectionSpacing)
+
+							if bestAny == nil || res.height < bestAny.height || (res.height == bestAny.height && betterReadable(res, *bestAny)) {
+								copyRes := res
+								bestAny = &copyRes
+							}
+
+							if res.height <= bodyHeight {
+								if bestFit == nil || betterReadable(res, *bestFit) {
+									copyRes := res
+									bestFit = &copyRes
+								}
+							}
+						}
+					}
+				}
+
+				chosen := bestFit
+				fits := true
+				if chosen == nil {
+					chosen = bestAny
+					fits = false
+				}
+
+				minWidth := chosen.cfg.colWidths[0]
+				for _, w := range chosen.cfg.colWidths[1:] {
+					minWidth = min(minWidth, w)
+				}
+				keyWidth := min(maxKeyWidth, max(6, minWidth-2))
+
+				renderColumn := func(colWidth int, secs []helpSection) []string {
+					pad := lipgloss.NewStyle().Width(colWidth)
+
+					renderItem := func(keys, desc string, keyW int, descW int) string {
+						k := helpDialogKeyStyle.Width(keyW).Render(keys)
+						d := helpDialogDescStyle.Width(descW).Render(desc)
+						return k + " " + d
+					}
+
+					var lines []string
+					for si, sec := range secs {
+						lines = append(lines, pad.Render(helpDialogHeaderStyle.Render(sec.title)))
+
+						if chosen.cfg.itemsPerLine == 1 {
+							descWidth := max(1, colWidth-keyWidth-1)
+							for _, item := range sec.items {
+								lines = append(lines, pad.Render(renderItem(item.keys, item.desc, keyWidth, descWidth)))
+							}
+						} else {
+							const innerGap = 2
+							leftW := (colWidth - innerGap) / 2
+							rightW := colWidth - innerGap - leftW
+
+							blockKeyW := min(keyWidth, max(4, leftW-2))
+							leftDescW := max(1, leftW-blockKeyW-1)
+							rightKeyW := min(keyWidth, max(4, rightW-2))
+							rightDescW := max(1, rightW-rightKeyW-1)
+
+							renderBlock := func(item helpItem, blockW int, kW int, dW int) string {
+								return lipgloss.NewStyle().Width(blockW).Render(renderItem(item.keys, item.desc, kW, dW))
+							}
+
+							for i := 0; i < len(sec.items); i += 2 {
+								left := renderBlock(sec.items[i], leftW, blockKeyW, leftDescW)
+								right := lipgloss.NewStyle().Width(rightW).Render("")
+								if i+1 < len(sec.items) {
+									right = renderBlock(sec.items[i+1], rightW, rightKeyW, rightDescW)
+								}
+								lines = append(lines, pad.Render(left+strings.Repeat(" ", innerGap)+right))
+							}
+						}
+
+						if chosen.cfg.sectionSpacing > 0 && si != len(secs)-1 {
+							for i := 0; i < chosen.cfg.sectionSpacing; i++ {
+								lines = append(lines, pad.Render(""))
+							}
+						}
+					}
+					return lines
+				}
+
+				renderedCols := make([][]string, chosen.cfg.cols)
+				maxLines := 0
+				for i := 0; i < chosen.cfg.cols; i++ {
+					renderedCols[i] = renderColumn(chosen.cfg.colWidths[i], chosen.assignments[i])
+					maxLines = max(maxLines, len(renderedCols[i]))
+				}
+
+				for i := 0; i < chosen.cfg.cols; i++ {
+					pad := lipgloss.NewStyle().Width(chosen.cfg.colWidths[i])
+					for len(renderedCols[i]) < maxLines {
+						renderedCols[i] = append(renderedCols[i], pad.Render(""))
+					}
+				}
+
+				parts := make([]string, 0, chosen.cfg.cols*2-1)
+				gapStr := strings.Repeat(" ", gap)
+				for i := 0; i < chosen.cfg.cols; i++ {
+					if i > 0 {
+						parts = append(parts, gapStr)
+					}
+					parts = append(parts, strings.Join(renderedCols[i], "\n"))
+				}
+
+				body := lipgloss.JoinHorizontal(lipgloss.Top, parts...)
+				return lipgloss.NewStyle().Width(width).Height(bodyHeight).Render(body), fits
+			}
+
+			renderHelpOverlay := func(width, height int, withFooter bool) string {
+				width = max(1, width)
+				height = max(1, height)
+
+				centered := lipgloss.NewStyle().Width(width).Align(lipgloss.Center)
+
+				modes := []helpRenderMode{
+					{
+						sections:       sectionsFull,
+						showByline:     true,
+						showFooter:     withFooter,
+						headerGapLines: 2,
+						maxCols:        3,
+						sectionSpacing: 1,
+						itemsPerLine:   1,
+					},
+					{
+						sections:       sectionsCompact,
+						showByline:     false,
+						showFooter:     withFooter,
+						headerGapLines: 1,
+						maxCols:        3,
+						sectionSpacing: 0,
+						itemsPerLine:   1,
+					},
+					{
+						sections:       sectionsTiny,
+						showByline:     false,
+						showFooter:     withFooter,
+						headerGapLines: 1,
+						maxCols:        3,
+						sectionSpacing: 0,
+						itemsPerLine:   2,
+					},
+					{
+						sections:       sectionsTiny,
+						showByline:     false,
+						showFooter:     false,
+						headerGapLines: 0,
+						maxCols:        2,
+						sectionSpacing: 0,
+						itemsPerLine:   2,
+					},
+				}
+
+				for _, mode := range modes {
+					headerParts := []string{aboutStyle.Render(centered.Render(versionLine))}
+					if mode.showByline {
+						headerParts = append(headerParts, dimTextStyle.Render(centered.Render("by elcuervo")))
+					}
+					if !mode.showFooter && withFooter {
+						headerParts = append(headerParts, dimTextStyle.Render(centered.Render("esc/q/? to close")))
+					}
+					header := strings.Join(headerParts, "\n")
+
+					footer := ""
+					footerLines := 0
+					if mode.showFooter && withFooter {
+						footer = dimTextStyle.Render(centered.Render("esc/q/? to close"))
+						footerLines = 1
+					}
+
+					reservedLines := lipgloss.Height(header) + mode.headerGapLines + footerLines
+					if reservedLines >= height {
+						continue
+					}
+
+					bodyHeight := max(1, height-reservedLines)
+					body, fits := renderHelpBody(width, bodyHeight, mode)
+					if !fits && mode.showFooter {
+						continue
+					}
+
+					gap := strings.Repeat("\n", mode.headerGapLines)
+					if footer != "" {
+						return header + gap + body + "\n" + footer
+					}
+					return header + gap + body
+				}
+
+				// Fallback: absolute minimum.
+				minHeader := aboutStyle.Render(centered.Render(versionLine))
+				minFooter := dimTextStyle.Render(centered.Render("esc/q/? to close"))
+				bodyHeight := max(1, height-lipgloss.Height(minHeader)-1)
+				body, _ := renderHelpBody(width, bodyHeight, helpRenderMode{
+					sections:       sectionsTiny,
+					showByline:     false,
+					showFooter:     false,
+					headerGapLines: 0,
+					maxCols:        1,
+					sectionSpacing: 0,
+					itemsPerLine:   2,
+				})
+				return minHeader + "\n" + body + "\n" + minFooter
+			}
+
+			// Prefer a full-screen boxed dialog when there's enough room; otherwise fall back
+			// to a plain, scrollable viewport (still auto-layouts columns by width).
+			const boxFrameW = 6 // border (2) + horizontal padding (4)
+			const boxFrameH = 4 // border (2) + vertical padding (2)
+			useBox := m.windowWidth >= boxFrameW+40 && m.windowHeight >= boxFrameH+12
+
+			if useBox {
+				innerW := max(1, m.windowWidth-boxFrameW)
+				innerH := max(1, m.windowHeight-boxFrameH)
+				content := renderHelpOverlay(innerW, innerH, true)
+				content = lipgloss.NewStyle().Width(innerW).Height(innerH).Render(content)
+				box := aboutBoxStyle.Render(content)
+				return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
+			}
+
+			vp := m.viewport
+			vp.Width = max(1, m.windowWidth)
+			vp.Height = max(1, m.windowHeight)
+			vp.YOffset = 0
+			vp.SetContent(renderHelpOverlay(vp.Width, vp.Height, true))
+			return vp.View()
 		}
-
-		// Header
-		versionLine := fmt.Sprintf("ot v%s (%s)", strings.TrimSpace(version), sha)
-		centered := lipgloss.NewStyle().Width(totalWidth).Align(lipgloss.Center)
-		header := aboutStyle.Render(centered.Render(versionLine)) + "\n"
-		header += dimTextStyle.Render(centered.Render("by elcuervo")) + "\n\n"
-
-		// Footer
-		footer := "\n" + dimTextStyle.Render(centered.Render("esc to close"))
-
-		useColumns := m.windowWidth >= totalWidth+4 && m.windowHeight >= 12
-		if useColumns {
-			box := aboutBoxStyle.Render(header + columns + footer)
-			return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, box)
-		}
-
-		compactKey := func(key, desc string) string {
-			return helpDialogKeyStyle.Render(key) + " " + helpDialogDescStyle.Render(desc)
-		}
-
-		lines := []string{
-			aboutStyle.Render(versionLine),
-			dimTextStyle.Render("by elcuervo"),
-			"",
-			helpDialogHeaderStyle.Render("Navigation"),
-			compactKey("↑ k", "up"),
-			compactKey("↓ j", "down"),
-			compactKey("g", "first"),
-			compactKey("G", "last"),
-			"",
-			helpDialogHeaderStyle.Render("Priority"),
-			compactKey("+", "increase"),
-			compactKey("-", "decrease"),
-			compactKey("!", "highest"),
-			compactKey("0", "reset"),
-			"",
-			helpDialogHeaderStyle.Render("Actions"),
-			compactKey("space", "toggle"),
-			compactKey("u", "undo"),
-			compactKey("a n", "add"),
-			compactKey("e", "edit"),
-			compactKey("d", "delete"),
-			compactKey("r", "refresh"),
-			"",
-			helpDialogHeaderStyle.Render("Search"),
-			compactKey("/", "search"),
-			compactKey("esc", "exit"),
-			"",
-			helpDialogHeaderStyle.Render("General"),
-			compactKey("?", "help"),
-			compactKey("q", "quit"),
-		}
-
-		if m.tabsEnabled && len(m.tabs) > 1 {
-			lines = append(lines,
-				"",
-				helpDialogHeaderStyle.Render("Tabs"),
-				compactKey("tab", "next"),
-				compactKey("S-tab", "prev"),
-			)
-		}
-
-		lines = append(lines, "", dimTextStyle.Render("esc to close"))
-
-		vp := m.viewport
-		vp.Width = max(1, m.windowWidth)
-		vp.Height = max(1, m.windowHeight)
-		vp.YOffset = 0
-		vp.SetContent(strings.Join(lines, "\n"))
-		return vp.View()
-	}
 
 	if m.editing && m.editingTask != nil {
 		titleLine := aboutStyle.Render("Edit Task")
