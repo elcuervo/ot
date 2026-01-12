@@ -275,15 +275,15 @@ func parseFile(filePath string) ([]*Task, error) {
 			}
 
 			tasks = append(tasks, &Task{
-				FilePath:    filePath,
-				LineNumber:  lineNum,
-				RawLine:     line,
-				Done:        status == "x",
-				Description: description,
-				DueDate:     parseDueDate(description),
+				FilePath:      filePath,
+				LineNumber:    lineNum,
+				RawLine:       line,
+				Done:          status == "x",
+				Description:   description,
+				DueDate:       parseDueDate(description),
 				ScheduledDate: parseScheduledDate(description),
-				DoneDate:    doneDate,
-				Priority:    parsePriority(description),
+				DoneDate:      doneDate,
+				Priority:      parsePriority(description),
 			})
 		}
 	}
