@@ -14,13 +14,13 @@ import (
 )
 
 var (
-	checkboxRe = regexp.MustCompile(`^(\s*-\s*)\[([ xX])\](.*)$`)
-	doneRe     = regexp.MustCompile(`\s*✅\s*\d{4}-\d{2}-\d{2}`)
-	doneDateRe = regexp.MustCompile(`✅\s*(\d{4}-\d{2}-\d{2})`)
-	taskRe     = regexp.MustCompile(`^\s*-\s*\[([ xX])\]\s*(.*)$`)
-	dueDateRe  = regexp.MustCompile(`📅\s*(\d{4}-\d{2}-\d{2})`)
+	checkboxRe  = regexp.MustCompile(`^(\s*-\s*)\[([ xX])\](.*)$`)
+	doneRe      = regexp.MustCompile(`\s*✅\s*\d{4}-\d{2}-\d{2}`)
+	doneDateRe  = regexp.MustCompile(`✅\s*(\d{4}-\d{2}-\d{2})`)
+	taskRe      = regexp.MustCompile(`^\s*-\s*\[([ xX])\]\s*(.*)$`)
+	dueDateRe   = regexp.MustCompile(`📅\s*(\d{4}-\d{2}-\d{2})`)
 	schedDateRe = regexp.MustCompile(`⏳\s*(\d{4}-\d{2}-\d{2})`)
-	priorityRe = regexp.MustCompile(`[🔺⏫🔼🔽⏬]`)
+	priorityRe  = regexp.MustCompile(`[🔺⏫🔼🔽⏬]`)
 )
 
 // Priority levels (lower value = higher priority)
@@ -52,16 +52,16 @@ var emojiToPriority = map[string]int{
 
 // Task represents a single task from a markdown file
 type Task struct {
-	FilePath    string
-	LineNumber  int
-	RawLine     string
-	Done        bool
-	Description string
-	Modified    bool
-	DueDate     *time.Time
+	FilePath      string
+	LineNumber    int
+	RawLine       string
+	Done          bool
+	Description   string
+	Modified      bool
+	DueDate       *time.Time
 	ScheduledDate *time.Time
-	DoneDate    *time.Time
-	Priority    int
+	DoneDate      *time.Time
+	Priority      int
 }
 
 // Toggle switches the task between done and not done

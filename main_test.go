@@ -326,6 +326,27 @@ func TestParseQueryFileGroupBy(t *testing.T) {
 	}
 }
 
+func TestParseQueryFilePathFilters(t *testing.T) {
+	tmpDir := t.TempDir()
+	content := "```tasks\npath includes Projects\npath does not include Archive\n```\n"
+	testFile := filepath.Join(tmpDir, "query.md")
+	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	query, err := parseQueryFileExtended(testFile)
+	if err != nil {
+		t.Fatalf("parseQueryFileExtended failed: %v", err)
+	}
+
+	if len(query.PathIncludes) != 1 || query.PathIncludes[0] != "Projects" {
+		t.Errorf("PathIncludes = %v, want [Projects]", query.PathIncludes)
+	}
+	if len(query.PathExcludes) != 1 || query.PathExcludes[0] != "Archive" {
+		t.Errorf("PathExcludes = %v, want [Archive]", query.PathExcludes)
+	}
+}
+
 func TestGroupTasksByFolder(t *testing.T) {
 	tasks := []*Task{
 		{FilePath: "/vault/notes/daily.md", Description: "Task 1"},
@@ -737,6 +758,26 @@ func TestMatchDateFilter(t *testing.T) {
 				t.Errorf("matchDateFilter() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestFilterTasksPathFilters(t *testing.T) {
+	tasks := []*Task{
+		{FilePath: "/vault/Projects/todo.md", Description: "Task 1"},
+		{FilePath: "/vault/Archive/old.md", Description: "Task 2"},
+	}
+
+	query := &Query{
+		PathIncludes: []string{"Projects"},
+		PathExcludes: []string{"Archive"},
+	}
+
+	filtered := filterTasks(tasks, query, "/vault")
+	if len(filtered) != 1 {
+		t.Fatalf("Expected 1 task, got %d", len(filtered))
+	}
+	if !strings.Contains(filtered[0].FilePath, "Projects") {
+		t.Errorf("Expected Projects task, got %s", filtered[0].FilePath)
 	}
 }
 

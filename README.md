@@ -119,5 +119,7 @@ sort by priority
 | `scheduled before/after/on <date>` | Date comparisons (YYYY-MM-DD) |
 | `done today/tomorrow/yesterday` | Relative date filters |
 | `done before/after/on <date>` | Date comparisons (YYYY-MM-DD) |
+| `path includes <text>` | Include tasks whose file path matches text |
+| `path does not include <text>` | Exclude tasks whose file path matches text |
 | `group by folder/filename` | Group tasks |
 | `sort by priority/due` | Sort tasks |

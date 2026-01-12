@@ -571,6 +571,9 @@ func (m *model) undoPriorityChange(entry *UndoEntry) {
 // filterTasksWithRecent applies query filters but keeps recently toggled tasks visible
 func (m *model) filterTasksWithRecent(allTasks []*Task, query *Query) []*Task {
 	return Filter(allTasks, func(task *Task) bool {
+		if !matchPathFilters(task, m.vaultPath, query.PathIncludes, query.PathExcludes) {
+			return false
+		}
 		// Date filters always apply - a task must match the date criteria
 		// regardless of whether it was recently toggled
 		if len(query.DateFilters) > 0 && !matchAllDateFilters(task, query.DateFilters) {
