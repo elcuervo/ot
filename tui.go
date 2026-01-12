@@ -443,7 +443,7 @@ func (m *model) filterBySearch() {
 			continue
 		}
 
-		if strings.Contains(strings.ToLower(task.Description), query) {
+		if strings.Contains(strings.ToLower(task.DisplayDescription()), query) {
 			filtered = append(filtered, task)
 			seen[task] = true
 			continue
@@ -571,6 +571,9 @@ func (m *model) undoPriorityChange(entry *UndoEntry) {
 // filterTasksWithRecent applies query filters but keeps recently toggled tasks visible
 func (m *model) filterTasksWithRecent(allTasks []*Task, query *Query) []*Task {
 	return Filter(allTasks, func(task *Task) bool {
+		if !matchPathFilters(task, m.vaultPath, query.PathIncludes, query.PathExcludes) {
+			return false
+		}
 		// Date filters always apply - a task must match the date criteria
 		// regardless of whether it was recently toggled
 		if len(query.DateFilters) > 0 && !matchAllDateFilters(task, query.DateFilters) {
@@ -864,7 +867,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				newValue := m.textInput.Value()
 				if m.editingTask != nil && newValue != m.editingTask.Description {
-					m.editingTask.Description = newValue
+					cleanDesc, parsedDone := normalizeDescription(newValue)
+					if m.editingTask.Done {
+						if parsedDone != nil {
+							m.editingTask.DoneDate = parsedDone
+						}
+					} else {
+						m.editingTask.DoneDate = nil
+					}
+					m.editingTask.Description = cleanDesc
 					m.editingTask.Modified = true
 					m.editingTask.rebuildRawLine()
 					if err := saveTask(m.editingTask); err != nil {
@@ -1708,7 +1719,7 @@ func (m model) View() string {
 	if m.deleting && m.deletingTask != nil {
 		titleLine := dangerStyle.Render("⚠ Delete Task")
 
-		taskPreview := renderTask(m.deletingTask.Done, m.deletingTask.Description)
+		taskPreview := renderTask(m.deletingTask.Done, m.deletingTask.DisplayDescription())
 		questionLine := helpStyle.Render("This action cannot be undone.")
 
 		contentWidth := int(float64(m.windowWidth) * 0.8)
@@ -1860,7 +1871,7 @@ func (m model) View() string {
 
 				sectionName := m.taskToSection[task]
 				groupName := m.taskToGroup[task]
-				descLower := strings.ToLower(task.Description)
+				descLower := strings.ToLower(task.DisplayDescription())
 
 				var matchInfo string
 				if strings.Contains(descLower, query) {
@@ -1877,7 +1888,7 @@ func (m model) View() string {
 				}
 				fileInfo := fileStyle.Render(fmt.Sprintf(" (%s:%d)", relPath(m.vaultPath, task.FilePath), task.LineNumber))
 
-				line := renderTask(task.Done, task.Description)
+				line := renderTask(task.Done, task.DisplayDescription())
 
 				if m.cursor == i {
 					line = selectedStyle.Render(line)
@@ -1961,7 +1972,7 @@ func (m model) View() string {
 						fileInfo = fileStyle.Render(fmt.Sprintf(" (:%d)", task.LineNumber))
 					}
 
-					line := renderTask(task.Done, task.Description)
+					line := renderTask(task.Done, task.DisplayDescription())
 
 					if m.cursor == taskIndex {
 						line = selectedStyle.Render(line)

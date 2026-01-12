@@ -229,8 +229,16 @@ func main() {
 		fmt.Println("  not done              Show only incomplete tasks")
 		fmt.Println("  due today             Tasks due today")
 		fmt.Println("  due today or tomorrow Tasks due today or tomorrow")
+		fmt.Println("  scheduled today       Tasks scheduled today")
+		fmt.Println("  done today            Tasks completed today")
 		fmt.Println("  due before <date>     Tasks due before date")
 		fmt.Println("  due after <date>      Tasks due after date")
+		fmt.Println("  scheduled before <date> Tasks scheduled before date")
+		fmt.Println("  scheduled after <date>  Tasks scheduled after date")
+		fmt.Println("  done before <date>    Tasks completed before date")
+		fmt.Println("  done after <date>     Tasks completed after date")
+		fmt.Println("  path includes <text>  Include tasks matching path text")
+		fmt.Println("  path does not include <text> Exclude tasks matching path text")
 		fmt.Println("  group by folder       Group tasks by folder")
 		fmt.Println("  group by filename     Group tasks by filename")
 		fmt.Println("  sort by priority      Sort tasks by priority")
@@ -333,7 +341,7 @@ func main() {
 	totalTasks := 0
 
 	for _, query := range queries {
-		filtered := filterTasks(allTasks, query)
+		filtered := filterTasks(allTasks, query, resolvedVault)
 		groups := groupTasks(filtered, query.GroupBy, query.SortBy, resolvedVault)
 
 		sections = append(sections, QuerySection{
@@ -378,7 +386,7 @@ func main() {
 						checkbox = "[x]"
 					}
 
-					fmt.Printf("%s %s (%s:%d)\n", checkbox, task.Description, relPath(resolvedVault, task.FilePath), task.LineNumber)
+					fmt.Printf("%s %s (%s:%d)\n", checkbox, task.DisplayDescription(), relPath(resolvedVault, task.FilePath), task.LineNumber)
 				}
 			}
 			fmt.Println()
@@ -476,7 +484,7 @@ func loadAllProfileTabs(cfg Config) ([]ProfileTab, error) {
 		// Build sections
 		var sections []QuerySection
 		for _, query := range queries {
-			filtered := filterTasks(allTasks, query)
+			filtered := filterTasks(allTasks, query, resolved.VaultPath)
 			groups := groupTasks(filtered, query.GroupBy, query.SortBy, resolved.VaultPath)
 			sections = append(sections, QuerySection{
 				Name:   query.Name,

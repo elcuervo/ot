@@ -37,7 +37,7 @@ vet:
 lint: fmt vet
 
 demo: build
-  ot --vault ./examples/vault ./examples/query.md
+  ot ./examples/vault -q ./examples/query.md
 
 gif: build
   vhs -p demo.tape
@@ -46,7 +46,7 @@ clean:
   rm -f ot coverage.out coverage.html
 
 run vault query:
-  go run . --vault {{vault}} {{query}}
+  go run . {{vault}} -q {{query}}
 
 list vault query:
-  go run . --vault {{vault}} --list {{query}}
+  go run . {{vault}} --list -q {{query}}

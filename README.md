@@ -64,6 +64,7 @@ Use `+`/`-` to cycle, `!` for highest, `0` to reset.
 ### Task Metadata
 
 - **Due date**: `📅 YYYY-MM-DD`
+- **Scheduled date**: `⏳ YYYY-MM-DD`
 - **Completion**: Auto-appends `✅ YYYY-MM-DD` when toggled done
 
 ## Config
@@ -114,5 +115,11 @@ sort by priority
 | `not done` | Incomplete tasks only |
 | `due today/tomorrow/yesterday` | Relative date filters |
 | `due before/after/on <date>` | Date comparisons (YYYY-MM-DD) |
+| `scheduled today/tomorrow/yesterday` | Relative date filters |
+| `scheduled before/after/on <date>` | Date comparisons (YYYY-MM-DD) |
+| `done today/tomorrow/yesterday` | Relative date filters |
+| `done before/after/on <date>` | Date comparisons (YYYY-MM-DD) |
+| `path includes <text>` | Include tasks whose file path matches text |
+| `path does not include <text>` | Exclude tasks whose file path matches text |
 | `group by folder/filename` | Group tasks |
 | `sort by priority/due` | Sort tasks |

@@ -14,11 +14,13 @@ import (
 )
 
 var (
-	checkboxRe = regexp.MustCompile(`^(\s*-\s*)\[([ xX])\](.*)$`)
-	doneRe     = regexp.MustCompile(`\s*✅\s*\d{4}-\d{2}-\d{2}`)
-	taskRe     = regexp.MustCompile(`^\s*-\s*\[([ xX])\]\s*(.*)$`)
-	dueDateRe  = regexp.MustCompile(`📅\s*(\d{4}-\d{2}-\d{2})`)
-	priorityRe = regexp.MustCompile(`[🔺⏫🔼🔽⏬]`)
+	checkboxRe  = regexp.MustCompile(`^(\s*-\s*)\[([ xX])\](.*)$`)
+	doneRe      = regexp.MustCompile(`\s*✅\s*\d{4}-\d{2}-\d{2}`)
+	doneDateRe  = regexp.MustCompile(`✅\s*(\d{4}-\d{2}-\d{2})`)
+	taskRe      = regexp.MustCompile(`^\s*-\s*\[([ xX])\]\s*(.*)$`)
+	dueDateRe   = regexp.MustCompile(`📅\s*(\d{4}-\d{2}-\d{2})`)
+	schedDateRe = regexp.MustCompile(`⏳\s*(\d{4}-\d{2}-\d{2})`)
+	priorityRe  = regexp.MustCompile(`[🔺⏫🔼🔽⏬]`)
 )
 
 // Priority levels (lower value = higher priority)
@@ -50,14 +52,16 @@ var emojiToPriority = map[string]int{
 
 // Task represents a single task from a markdown file
 type Task struct {
-	FilePath    string
-	LineNumber  int
-	RawLine     string
-	Done        bool
-	Description string
-	Modified    bool
-	DueDate     *time.Time
-	Priority    int
+	FilePath      string
+	LineNumber    int
+	RawLine       string
+	Done          bool
+	Description   string
+	Modified      bool
+	DueDate       *time.Time
+	ScheduledDate *time.Time
+	DoneDate      *time.Time
+	Priority      int
 }
 
 // Toggle switches the task between done and not done
@@ -75,16 +79,14 @@ func (t *Task) updateRawLine() {
 	}
 
 	prefix := matches[1]
-	content := matches[3]
-
-	content = doneRe.ReplaceAllString(content, "")
-
 	if t.Done {
-		doneDate := time.Now().Format("2006-01-02")
-		t.RawLine = fmt.Sprintf("%s[x]%s ✅ %s", prefix, content, doneDate)
+		now := time.Now()
+		t.DoneDate = &now
 	} else {
-		t.RawLine = fmt.Sprintf("%s[ ]%s", prefix, content)
+		t.DoneDate = nil
 	}
+
+	t.rebuildRawLineWithPrefix(prefix)
 }
 
 // rebuildRawLine rebuilds the raw line with a new description
@@ -95,12 +97,28 @@ func (t *Task) rebuildRawLine() {
 	}
 
 	prefix := matches[1]
+	t.rebuildRawLineWithPrefix(prefix)
+}
+
+func (t *Task) rebuildRawLineWithPrefix(prefix string) {
 	checkbox := "[ ]"
 	if t.Done {
 		checkbox = "[x]"
 	}
 
-	t.RawLine = fmt.Sprintf("%s%s %s", prefix, checkbox, t.Description)
+	desc := strings.TrimSpace(t.Description)
+	line := fmt.Sprintf("%s%s", prefix, checkbox)
+	if desc != "" {
+		line = fmt.Sprintf("%s %s", line, desc)
+	} else {
+		line = line + " "
+	}
+
+	if t.Done && t.DoneDate != nil {
+		line = fmt.Sprintf("%s ✅ %s", line, t.DoneDate.Format("2006-01-02"))
+	}
+
+	t.RawLine = line
 }
 
 // scanVault recursively finds all .md files in a directory
@@ -132,11 +150,55 @@ func parseDueDate(description string) *time.Time {
 	if matches == nil {
 		return nil
 	}
-	date, err := time.Parse("2006-01-02", matches[1])
+	date, err := time.ParseInLocation("2006-01-02", matches[1], time.Local)
 	if err != nil {
 		return nil
 	}
 	return &date
+}
+
+// parseScheduledDate extracts scheduled date from task description
+func parseScheduledDate(description string) *time.Time {
+	matches := schedDateRe.FindStringSubmatch(description)
+	if matches == nil {
+		return nil
+	}
+	date, err := time.ParseInLocation("2006-01-02", matches[1], time.Local)
+	if err != nil {
+		return nil
+	}
+	return &date
+}
+
+// parseDoneDate extracts completion date from task description
+func parseDoneDate(description string) *time.Time {
+	matches := doneDateRe.FindStringSubmatch(description)
+	if matches == nil {
+		return nil
+	}
+	date, err := time.ParseInLocation("2006-01-02", matches[1], time.Local)
+	if err != nil {
+		return nil
+	}
+	return &date
+}
+
+func normalizeDescription(description string) (string, *time.Time) {
+	doneDate := parseDoneDate(description)
+	clean := strings.TrimSpace(doneRe.ReplaceAllString(description, ""))
+	return clean, doneDate
+}
+
+// DisplayDescription returns the description with completion date appended when present.
+func (t *Task) DisplayDescription() string {
+	desc := strings.TrimSpace(t.Description)
+	if t.Done && t.DoneDate != nil {
+		if desc == "" {
+			return fmt.Sprintf("✅ %s", t.DoneDate.Format("2006-01-02"))
+		}
+		return fmt.Sprintf("%s ✅ %s", desc, t.DoneDate.Format("2006-01-02"))
+	}
+	return desc
 }
 
 // parsePriority extracts priority from task description
@@ -206,16 +268,22 @@ func parseFile(filePath string) ([]*Task, error) {
 
 		if matches != nil {
 			status := strings.ToLower(matches[1])
-			description := strings.TrimSpace(matches[2])
+			rawDescription := strings.TrimSpace(matches[2])
+			description, doneDate := normalizeDescription(rawDescription)
+			if status != "x" {
+				doneDate = nil
+			}
 
 			tasks = append(tasks, &Task{
-				FilePath:    filePath,
-				LineNumber:  lineNum,
-				RawLine:     line,
-				Done:        status == "x",
-				Description: description,
-				DueDate:     parseDueDate(description),
-				Priority:    parsePriority(description),
+				FilePath:      filePath,
+				LineNumber:    lineNum,
+				RawLine:       line,
+				Done:          status == "x",
+				Description:   description,
+				DueDate:       parseDueDate(description),
+				ScheduledDate: parseScheduledDate(description),
+				DoneDate:      doneDate,
+				Priority:      parsePriority(description),
 			})
 		}
 	}
@@ -311,7 +379,8 @@ func addTask(refTask *Task, description string) (*Task, error) {
 	}
 
 	lines := strings.Split(string(content), "\n")
-	newLine := "- [ ] " + description
+	cleanDesc, _ := normalizeDescription(description)
+	newLine := "- [ ] " + cleanDesc
 
 	// Insert after the reference task's line
 	insertAt := refTask.LineNumber
@@ -341,7 +410,7 @@ func addTask(refTask *Task, description string) (*Task, error) {
 		LineNumber:  insertAt + 1,
 		RawLine:     newLine,
 		Done:        false,
-		Description: description,
+		Description: cleanDesc,
 		Priority:    PriorityNormal,
 	}, nil
 }
@@ -369,6 +438,56 @@ type editorFinishedMsg struct {
 	task *Task
 }
 
+func splitCommandLine(command string) []string {
+	var args []string
+	var current strings.Builder
+	inSingle := false
+	inDouble := false
+	escaped := false
+
+	for _, r := range command {
+		if escaped {
+			current.WriteRune(r)
+			escaped = false
+			continue
+		}
+
+		if r == '\\' && !inSingle {
+			escaped = true
+			continue
+		}
+
+		switch r {
+		case '\'':
+			if !inDouble {
+				inSingle = !inSingle
+				continue
+			}
+		case '"':
+			if !inSingle {
+				inDouble = !inDouble
+				continue
+			}
+		case ' ', '\t', '\n':
+			if !inSingle && !inDouble {
+				if current.Len() > 0 {
+					args = append(args, current.String())
+					current.Reset()
+				}
+				continue
+			}
+		}
+
+		current.WriteRune(r)
+	}
+
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+
+	return args
+}
+
 // openInEditor opens the task file in an external editor at the correct line
 func openInEditor(task *Task) tea.Cmd {
 	editor := os.Getenv("EDITOR")
@@ -377,7 +496,12 @@ func openInEditor(task *Task) tea.Cmd {
 	}
 
 	lineArg := fmt.Sprintf("+%d", task.LineNumber)
-	c := exec.Command(editor, lineArg, task.FilePath)
+	parts := splitCommandLine(editor)
+	if len(parts) == 0 {
+		parts = []string{"vi"}
+	}
+	args := append(parts[1:], lineArg, task.FilePath)
+	c := exec.Command(parts[0], args...)
 
 	return tea.ExecProcess(c, func(err error) tea.Msg {
 		return editorFinishedMsg{err: err, task: task}

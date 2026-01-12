@@ -30,11 +30,13 @@ type DateFilter struct {
 
 // Query represents parsed query options
 type Query struct {
-	Name        string
-	NotDone     bool
-	GroupBy     string
-	DateFilters []DateFilter
-	SortBy      string
+	Name         string
+	NotDone      bool
+	GroupBy      string
+	DateFilters  []DateFilter
+	SortBy       string
+	PathIncludes []string
+	PathExcludes []string
 }
 
 // TaskGroup represents a group of tasks
@@ -206,7 +208,45 @@ func parseQueryContent(queryContent string) *Query {
 		query.SortBy = sortMatch[1]
 	}
 
+	const pathIncludesPrefix = "path includes "
+	const pathExcludesPrefix = "path does not include "
+
+	for _, line := range strings.Split(queryContent, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		lower := strings.ToLower(line)
+		switch {
+		case strings.HasPrefix(lower, pathIncludesPrefix):
+			value := strings.TrimSpace(line[len(pathIncludesPrefix):])
+			value = trimQueryValue(value)
+			if value != "" {
+				query.PathIncludes = append(query.PathIncludes, value)
+			}
+		case strings.HasPrefix(lower, pathExcludesPrefix):
+			value := strings.TrimSpace(line[len(pathExcludesPrefix):])
+			value = trimQueryValue(value)
+			if value != "" {
+				query.PathExcludes = append(query.PathExcludes, value)
+			}
+		}
+	}
+
 	return query
+}
+
+func trimQueryValue(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) < 2 {
+		return value
+	}
+	first := value[0]
+	last := value[len(value)-1]
+	if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
+		return strings.TrimSpace(value[1 : len(value)-1])
+	}
+	return value
 }
 
 func splitOrDates(value string) []string {
@@ -224,9 +264,10 @@ func splitOrDates(value string) []string {
 	return dates
 }
 
-// startOfDay returns the time truncated to midnight UTC
+// startOfDay returns the time truncated to midnight in local time
 func startOfDay(t time.Time) time.Time {
-	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+	local := t.In(time.Local)
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.Local)
 }
 
 // resolveDate converts relative date strings to actual dates
@@ -241,8 +282,8 @@ func resolveDate(dateStr string) time.Time {
 	case "yesterday":
 		return today.AddDate(0, 0, -1)
 	default:
-		if parsed, err := time.Parse("2006-01-02", dateStr); err == nil {
-			return parsed
+		if parsed, err := time.ParseInLocation("2006-01-02", dateStr, time.Local); err == nil {
+			return startOfDay(parsed)
 		}
 		return today
 	}
@@ -255,6 +296,10 @@ func matchDateFilter(task *Task, filter DateFilter) bool {
 	switch filter.Field {
 	case "due":
 		taskDate = task.DueDate
+	case "scheduled":
+		taskDate = task.ScheduledDate
+	case "done":
+		taskDate = task.DoneDate
 	default:
 		return true
 	}
@@ -312,9 +357,51 @@ func matchAllDateFilters(task *Task, filters []DateFilter) bool {
 	return true
 }
 
+func matchPathFilters(task *Task, vaultPath string, includes []string, excludes []string) bool {
+	if len(includes) == 0 && len(excludes) == 0 {
+		return true
+	}
+
+	path := task.FilePath
+	if vaultPath != "" {
+		if rel, err := filepath.Rel(vaultPath, task.FilePath); err == nil {
+			path = rel
+		}
+	}
+	path = filepath.ToSlash(path)
+	pathLower := strings.ToLower(path)
+
+	for _, include := range includes {
+		include = strings.TrimSpace(include)
+		if include == "" {
+			continue
+		}
+		needle := strings.ToLower(filepath.ToSlash(include))
+		if !strings.Contains(pathLower, needle) {
+			return false
+		}
+	}
+
+	for _, exclude := range excludes {
+		exclude = strings.TrimSpace(exclude)
+		if exclude == "" {
+			continue
+		}
+		needle := strings.ToLower(filepath.ToSlash(exclude))
+		if strings.Contains(pathLower, needle) {
+			return false
+		}
+	}
+
+	return true
+}
+
 // filterTasks applies a query's filters to a task list
-func filterTasks(allTasks []*Task, query *Query) []*Task {
+func filterTasks(allTasks []*Task, query *Query, vaultPath string) []*Task {
 	return Filter(allTasks, func(task *Task) bool {
+		if !matchPathFilters(task, vaultPath, query.PathIncludes, query.PathExcludes) {
+			return false
+		}
 		if query.NotDone && task.Done {
 			return false
 		}

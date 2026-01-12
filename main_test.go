@@ -326,6 +326,27 @@ func TestParseQueryFileGroupBy(t *testing.T) {
 	}
 }
 
+func TestParseQueryFilePathFilters(t *testing.T) {
+	tmpDir := t.TempDir()
+	content := "```tasks\npath includes Projects\npath does not include Archive\n```\n"
+	testFile := filepath.Join(tmpDir, "query.md")
+	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	query, err := parseQueryFileExtended(testFile)
+	if err != nil {
+		t.Fatalf("parseQueryFileExtended failed: %v", err)
+	}
+
+	if len(query.PathIncludes) != 1 || query.PathIncludes[0] != "Projects" {
+		t.Errorf("PathIncludes = %v, want [Projects]", query.PathIncludes)
+	}
+	if len(query.PathExcludes) != 1 || query.PathExcludes[0] != "Archive" {
+		t.Errorf("PathExcludes = %v, want [Archive]", query.PathExcludes)
+	}
+}
+
 func TestGroupTasksByFolder(t *testing.T) {
 	tasks := []*Task{
 		{FilePath: "/vault/notes/daily.md", Description: "Task 1"},
@@ -618,6 +639,14 @@ func TestParseQueryFileDateFilters(t *testing.T) {
 			wantFirstOp:     "on",
 			wantFirstDate:   "today",
 		},
+		{
+			name:            "done today",
+			content:         "```tasks\ndone today\n```\n",
+			wantFilterCount: 1,
+			wantFirstField:  "done",
+			wantFirstOp:     "on",
+			wantFirstDate:   "today",
+		},
 	}
 
 	for _, tt := range tests {
@@ -656,7 +685,7 @@ func TestParseQueryFileDateFilters(t *testing.T) {
 func TestMatchDateFilter(t *testing.T) {
 	// Use fixed dates for testing
 	parseDate := func(s string) *time.Time {
-		d, _ := time.Parse("2006-01-02", s)
+		d, _ := time.ParseInLocation("2006-01-02", s, time.Local)
 		return &d
 	}
 
@@ -708,6 +737,18 @@ func TestMatchDateFilter(t *testing.T) {
 			filter: DateFilter{Field: "due", Operator: "on", Date: "2025-12-29"},
 			want:   false,
 		},
+		{
+			name:   "scheduled on target date",
+			task:   &Task{ScheduledDate: parseDate("2025-12-29")},
+			filter: DateFilter{Field: "scheduled", Operator: "on", Date: "2025-12-29"},
+			want:   true,
+		},
+		{
+			name:   "done after target date",
+			task:   &Task{DoneDate: parseDate("2025-12-30")},
+			filter: DateFilter{Field: "done", Operator: "after", Date: "2025-12-29"},
+			want:   true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -717,6 +758,26 @@ func TestMatchDateFilter(t *testing.T) {
 				t.Errorf("matchDateFilter() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestFilterTasksPathFilters(t *testing.T) {
+	tasks := []*Task{
+		{FilePath: "/vault/Projects/todo.md", Description: "Task 1"},
+		{FilePath: "/vault/Archive/old.md", Description: "Task 2"},
+	}
+
+	query := &Query{
+		PathIncludes: []string{"Projects"},
+		PathExcludes: []string{"Archive"},
+	}
+
+	filtered := filterTasks(tasks, query, "/vault")
+	if len(filtered) != 1 {
+		t.Fatalf("Expected 1 task, got %d", len(filtered))
+	}
+	if !strings.Contains(filtered[0].FilePath, "Projects") {
+		t.Errorf("Expected Projects task, got %s", filtered[0].FilePath)
 	}
 }
 
