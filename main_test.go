@@ -618,6 +618,14 @@ func TestParseQueryFileDateFilters(t *testing.T) {
 			wantFirstOp:     "on",
 			wantFirstDate:   "today",
 		},
+		{
+			name:            "done today",
+			content:         "```tasks\ndone today\n```\n",
+			wantFilterCount: 1,
+			wantFirstField:  "done",
+			wantFirstOp:     "on",
+			wantFirstDate:   "today",
+		},
 	}
 
 	for _, tt := range tests {
@@ -656,7 +664,7 @@ func TestParseQueryFileDateFilters(t *testing.T) {
 func TestMatchDateFilter(t *testing.T) {
 	// Use fixed dates for testing
 	parseDate := func(s string) *time.Time {
-		d, _ := time.Parse("2006-01-02", s)
+		d, _ := time.ParseInLocation("2006-01-02", s, time.Local)
 		return &d
 	}
 
@@ -707,6 +715,18 @@ func TestMatchDateFilter(t *testing.T) {
 			task:   &Task{DueDate: nil},
 			filter: DateFilter{Field: "due", Operator: "on", Date: "2025-12-29"},
 			want:   false,
+		},
+		{
+			name:   "scheduled on target date",
+			task:   &Task{ScheduledDate: parseDate("2025-12-29")},
+			filter: DateFilter{Field: "scheduled", Operator: "on", Date: "2025-12-29"},
+			want:   true,
+		},
+		{
+			name:   "done after target date",
+			task:   &Task{DoneDate: parseDate("2025-12-30")},
+			filter: DateFilter{Field: "done", Operator: "after", Date: "2025-12-29"},
+			want:   true,
 		},
 	}
 

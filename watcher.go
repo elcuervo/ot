@@ -26,6 +26,25 @@ type Watcher struct {
 	vaultPath string
 }
 
+func (w *Watcher) addDirRecursive(root string) {
+	if root == "" {
+		return
+	}
+	if strings.HasPrefix(filepath.Base(root), ".") {
+		return
+	}
+	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || !info.IsDir() {
+			return nil
+		}
+		if strings.HasPrefix(info.Name(), ".") && path != root {
+			return filepath.SkipDir
+		}
+		_ = w.watcher.Add(path)
+		return nil
+	})
+}
+
 // NewWatcher creates a new file watcher for the given vault path
 func NewWatcher(vaultPath string) (*Watcher, error) {
 	w, err := fsnotify.NewWatcher()
@@ -44,19 +63,11 @@ func NewWatcher(vaultPath string) (*Watcher, error) {
 		return &Watcher{watcher: w, vaultPath: vaultPath}, nil
 	}
 
+	watcher := &Watcher{watcher: w, vaultPath: vaultPath}
 	// Walk vault and add all directories (skip hidden ones)
-	filepath.Walk(vaultPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil || !info.IsDir() {
-			return nil
-		}
-		if strings.HasPrefix(info.Name(), ".") && path != vaultPath {
-			return filepath.SkipDir
-		}
-		w.Add(path)
-		return nil
-	})
+	watcher.addDirRecursive(vaultPath)
 
-	return &Watcher{watcher: w, vaultPath: vaultPath}, nil
+	return watcher, nil
 }
 
 // WatchCmd returns a BubbleTea command that listens for file changes
@@ -67,6 +78,13 @@ func (w *Watcher) WatchCmd() tea.Cmd {
 			case event, ok := <-w.watcher.Events:
 				if !ok {
 					return nil
+				}
+
+				if event.Has(fsnotify.Create) {
+					if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
+						w.addDirRecursive(event.Name)
+						continue
+					}
 				}
 
 				// Only care about .md files

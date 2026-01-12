@@ -229,8 +229,14 @@ func main() {
 		fmt.Println("  not done              Show only incomplete tasks")
 		fmt.Println("  due today             Tasks due today")
 		fmt.Println("  due today or tomorrow Tasks due today or tomorrow")
+		fmt.Println("  scheduled today       Tasks scheduled today")
+		fmt.Println("  done today            Tasks completed today")
 		fmt.Println("  due before <date>     Tasks due before date")
 		fmt.Println("  due after <date>      Tasks due after date")
+		fmt.Println("  scheduled before <date> Tasks scheduled before date")
+		fmt.Println("  scheduled after <date>  Tasks scheduled after date")
+		fmt.Println("  done before <date>    Tasks completed before date")
+		fmt.Println("  done after <date>     Tasks completed after date")
 		fmt.Println("  group by folder       Group tasks by folder")
 		fmt.Println("  group by filename     Group tasks by filename")
 		fmt.Println("  sort by priority      Sort tasks by priority")
@@ -378,7 +384,7 @@ func main() {
 						checkbox = "[x]"
 					}
 
-					fmt.Printf("%s %s (%s:%d)\n", checkbox, task.Description, relPath(resolvedVault, task.FilePath), task.LineNumber)
+					fmt.Printf("%s %s (%s:%d)\n", checkbox, task.DisplayDescription(), relPath(resolvedVault, task.FilePath), task.LineNumber)
 				}
 			}
 			fmt.Println()
